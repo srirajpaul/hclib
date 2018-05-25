@@ -3,8 +3,14 @@
 
 #include "hclib_cpp.h"
 #include "hclib_ref-count.h"
+#define USE_STD_VEC
+//#define USE_C_ARRAY
+#ifdef USE_STD_VEC
 #include <vector>
 #include <mutex>
+#else
+#include "hclib-atomics.h"
+#endif
 
 namespace hclib {
 namespace resilience {
@@ -30,7 +36,7 @@ Read operations are not concurrent with insertion
 */
 template<typename T>
 class safe_vector {
-
+#ifdef USE_STD_VEC
     std::vector<T> vec;
     std::mutex mtx;
 
@@ -60,6 +66,42 @@ class safe_vector {
     //auto end() noexcept -> decltype(vec.end()) {
     //    return vec.end();
     //}
+#elif defined USE_C_ARRAY
+    #define SAFE_VECTOR_CAPACITY 128
+    T vec[SAFE_VECTOR_CAPACITY];
+    volatile int pos = -1;
+#ifdef USE_MUTEX_LOCK
+    std::mutex mtx;
+#endif
+
+  public:
+    //TODO: can this take both lvalue and rvalue?
+    void push_back(T&& value) {
+#ifdef USE_MUTEX_LOCK
+	std::lock_guard<std::mutex> lkg(mtx);
+        pos++;
+        assert(pos < SAFE_VECTOR_CAPACITY);
+        vec[pos] = value;
+#else
+	hc_atomic_inc(&pos);
+	assert(pos < SAFE_VECTOR_CAPACITY);
+	vec[pos] = std::forward<T>(value);
+#endif
+    }
+
+    size_t size() const noexcept {
+        return pos + 1;
+    }
+
+    T* data() noexcept {
+        return &vec[0];
+    }
+
+    void clear() noexcept {
+	// TODO: mutual exclusion?
+        pos = -1;
+    }
+#endif
 };
 
 template<typename T>
