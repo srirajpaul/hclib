@@ -67,7 +67,9 @@ class safe_vector {
     //    return vec.end();
     //}
 #elif defined USE_C_ARRAY
-    #define SAFE_VECTOR_CAPACITY 128
+#ifndef SAFE_VECTOR_CAPACITY
+#define SAFE_VECTOR_CAPACITY 128
+#endif
     T vec[SAFE_VECTOR_CAPACITY];
     volatile int pos = -1;
 #ifdef USE_MUTEX_LOCK
