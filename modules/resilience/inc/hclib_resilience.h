@@ -3,13 +3,20 @@
 
 #include "hclib_cpp.h"
 #include "hclib_ref-count.h"
+
 #define USE_STD_VEC
-//#define USE_C_ARRAY
+//#define USE_C_ARRAY_WITH_ATOMIC
+//#define USE_C_ARRAY_WITH_LOCK
+
 #ifdef USE_STD_VEC
 #include <vector>
 #include <mutex>
-#else
+#elif defined USE_C_ARRAY_WITH_ATOMIC
 #include "hclib-atomics.h"
+#elif defined USE_C_ARRAY_WITH_LOCK
+#include <mutex>
+#else
+#error No data container for resilient promises specified
 #endif
 
 namespace hclib {
@@ -66,25 +73,25 @@ class safe_vector {
     //auto end() noexcept -> decltype(vec.end()) {
     //    return vec.end();
     //}
-#elif defined USE_C_ARRAY
+#elif defined (USE_C_ARRAY_WITH_ATOMIC) || defined (USE_C_ARRAY_WITH_LOCK)
 #ifndef SAFE_VECTOR_CAPACITY
 #define SAFE_VECTOR_CAPACITY 128
 #endif
     T vec[SAFE_VECTOR_CAPACITY];
     volatile int pos = -1;
-#ifdef USE_MUTEX_LOCK
+#ifdef USE_C_ARRAY_WITH_LOCK
     std::mutex mtx;
 #endif
 
   public:
     //TODO: can this take both lvalue and rvalue?
     void push_back(T&& value) {
-#ifdef USE_MUTEX_LOCK
+#if defined (USE_C_ARRAY_WITH_LOCK)
 	std::lock_guard<std::mutex> lkg(mtx);
         pos++;
         assert(pos < SAFE_VECTOR_CAPACITY);
         vec[pos] = value;
-#else
+#elif defined (USE_C_ARRAY_WITH_ATOMIC)
 	hc_atomic_inc(&pos);
 	assert(pos < SAFE_VECTOR_CAPACITY);
 	vec[pos] = std::forward<T>(value);
