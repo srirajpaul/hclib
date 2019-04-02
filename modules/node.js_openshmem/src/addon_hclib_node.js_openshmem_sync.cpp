@@ -111,6 +111,39 @@ Napi::Number shmem_double_p_sync_fn(const Napi::CallbackInfo& info) {
     return Napi::Number::New(env, 1);
 }
 
+Napi::Number shmem_ab_double_g_sync_fn(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::ArrayBuffer remoteBuffer = info[0].As<Napi::ArrayBuffer>();
+    int64_t index = info[1].As<Napi::Number>().Int64Value();
+    int64_t remotePE = info[2].As<Napi::Number>().Int64Value();
+    double* dataPtr = static_cast<double*>(remoteBuffer.Data());
+    double* valPtr = (double*)malloc(sizeof(double));
+
+    START_IS_OFFLOAD
+	*valPtr = shmem_double_g(dataPtr + index, remotePE);
+    END_IS_OFFLOAD
+
+    double remoteVal = *valPtr;
+    free(valPtr);
+
+    return Napi::Number::New(env, remoteVal);
+}
+
+Napi::Number shmem_ab_double_p_sync_fn(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::ArrayBuffer remoteBuffer = info[0].As<Napi::ArrayBuffer>();
+    int64_t index = info[1].As<Napi::Number>().Int64Value();
+    double val = info[2].As<Napi::Number>().DoubleValue();
+    int64_t remotePE = info[3].As<Napi::Number>().Int64Value();
+    double* dataPtr = static_cast<double*>(remoteBuffer.Data());
+
+    START_IS_OFFLOAD
+	shmem_double_p(dataPtr + index, val, remotePE);
+    END_IS_OFFLOAD
+
+    return Napi::Number::New(env, 1);
+}
+
 Napi::Number shmem_double_g_nbi_sync_fn(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     Napi::ArrayBuffer dest_buffer = info[0].As<Napi::ArrayBuffer>();
@@ -274,6 +307,10 @@ Napi::Value Init_sync(Napi::Env env, Napi::Object exports) {
               Napi::Function::New(env, shmem_double_g_sync_fn));
   exports.Set(Napi::String::New(env, "double_p_sync"),
               Napi::Function::New(env, shmem_double_p_sync_fn));
+  exports.Set(Napi::String::New(env, "ab_double_g_sync"),
+	      Napi::Function::New(env, shmem_ab_double_g_sync_fn));
+  exports.Set(Napi::String::New(env, "ab_double_p_sync"),
+	      Napi::Function::New(env, shmem_ab_double_p_sync_fn));
   exports.Set(Napi::String::New(env, "double_g_nbi_sync"),
               Napi::Function::New(env, shmem_double_g_nbi_sync_fn));
   exports.Set(Napi::String::New(env, "double_p_nbi_sync"),

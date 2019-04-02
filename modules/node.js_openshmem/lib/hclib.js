@@ -109,6 +109,14 @@ double_p_sync: function(dest, val, pe) {
     return addon.double_p_sync(dest, val, pe);
 },
 
+ab_double_g_sync: function(dest_buf, index, pe) {
+    return addon.ab_double_g_sync(dest_buf, index, pe);
+},
+
+ab_double_p_sync: function(dest_buf, index, val, pe) {
+    return addon.ab_double_p_sync(dest_buf, index, val, pe);
+},
+
 double_g_nbi_sync: function(dest_buf, dest_idx, src_buf, src_idx, pe) {
     return addon.double_g_nbi_sync(dest_buf, dest_idx, src_buf, src_idx, pe);
 },
