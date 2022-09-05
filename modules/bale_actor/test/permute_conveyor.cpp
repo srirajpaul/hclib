@@ -87,7 +87,7 @@ sparsemat_t * permute_matrix_conveyor(sparsemat_t * A, int64_t * rperminv, int64
   pkg_rowcnt_t pkgrc_p;
   convey_t* cnv_rc = convey_new(SIZE_MAX, 0, NULL, convey_opt_SCATTER);
 
-  convey_begin(cnv_rc, sizeof(pkg_rowcnt_t));
+  convey_begin(cnv_rc, sizeof(pkg_rowcnt_t), 0);
   lnnz = row = 0;
   while(convey_advance(cnv_rc, (row == A->lnumrows))) {
     for( ;row < A->lnumrows; row++){
@@ -108,7 +108,7 @@ sparsemat_t * permute_matrix_conveyor(sparsemat_t * A, int64_t * rperminv, int64
   assert(A->nnz = lgp_reduce_add_l(lnnz));
 
   // allocate pmat to the max of the new number of nonzeros per thread  
-  Ap = init_matrix(A->numrows, A->numcols, lnnz);
+  Ap = init_matrix(A->numrows, A->numcols, lnnz, 0);
   if(Ap == NULL) return(NULL);
   lgp_barrier();
 
@@ -125,7 +125,7 @@ sparsemat_t * permute_matrix_conveyor(sparsemat_t * A, int64_t * rperminv, int64
   pkg_rowcol_t pkg_nz, pkgnz_p;
   
   convey_t* cnv_nz = convey_new(SIZE_MAX, 0, NULL, convey_opt_SCATTER);
-  convey_begin(cnv_nz, sizeof(pkg_rowcol_t));
+  convey_begin(cnv_nz, sizeof(pkg_rowcol_t), 0);
 
   i = row = 0;
   while(convey_advance(cnv_nz, (i == A->lnnz))){
@@ -164,8 +164,8 @@ sparsemat_t * permute_matrix_conveyor(sparsemat_t * A, int64_t * rperminv, int64
   assert( cnv_r != NULL );
   convey_t* cnv_e = convey_new(SIZE_MAX, 0, NULL, 0);
   assert( cnv_e != NULL );
-  convey_begin(cnv_r, sizeof(pkg_inonz_t));
-  convey_begin(cnv_e, sizeof(pkg_inonz_t));
+  convey_begin(cnv_r, sizeof(pkg_inonz_t), 0);
+  convey_begin(cnv_e, sizeof(pkg_inonz_t), 0);
   bool more;
   i=0;
   while( more = convey_advance(cnv_r,(i == Ap->lnnz)), more | convey_advance(cnv_e, !more) ){
@@ -295,7 +295,7 @@ int main(int argc, char * argv[]) {
   int64_t * rp = rand_permp(numrows, seed);
   int64_t * cp = rand_permp(numrows, seed + 1);  
   
-  sparsemat_t * inmat = gen_erdos_renyi_graph_dist(numrows, erdos_renyi_prob, 0, 3, seed + 2);
+  sparsemat_t * inmat = erdos_renyi_random_graph(numrows, erdos_renyi_prob, DIRECTED, NOLOOPS, seed + 2);
   if(inmat == NULL){
     T0_printf("ERROR: inmat is null!\n");
     return(-1);

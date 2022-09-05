@@ -80,7 +80,7 @@ sparsemat_t * permute_matrix_agi(sparsemat_t *A, int64_t *rperminv, int64_t *cpe
   }
   lgp_barrier();
 
-  sparsemat_t * Ap = init_matrix(A->numrows, A->numcols, cnt);
+  sparsemat_t * Ap = init_matrix(A->numrows, A->numcols, cnt, 0);
   
   // fill in permuted rows
   Ap->loffset[0] = pos = 0;
@@ -210,7 +210,7 @@ int main(int argc, char * argv[]) {
   int64_t * rp = rand_permp(numrows, seed);
   int64_t * cp = rand_permp(numrows, seed + 1);  
   
-  sparsemat_t * inmat = gen_erdos_renyi_graph_dist(numrows, erdos_renyi_prob, 0, 3, seed + 2);
+  sparsemat_t * inmat = erdos_renyi_random_graph(numrows, erdos_renyi_prob, DIRECTED, NOLOOPS, seed + 2);
   if(inmat == NULL){
     T0_printf("ERROR: inmat is null!\n");
     return(-1);

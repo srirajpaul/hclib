@@ -43,6 +43,7 @@
 extern "C" {
 #include "spmat.h"
 }
+#include <std_options.h>
 
 double toposort_matrix_convey(SHARED int64_t *rperm, SHARED int64_t *cperm, sparsemat_t *mat, sparsemat_t *tmat) {
 
@@ -79,7 +80,7 @@ double toposort_matrix_convey(SHARED int64_t *rperm, SHARED int64_t *cperm, spar
   convey_t * conv = convey_new(SIZE_MAX, 0, NULL, convey_opt_PROGRESS);
   if(conv == NULL){return(-1);}
 
-  if(convey_begin( conv, sizeof(pkg_topo_t) ) != convey_OK){return(-1);}
+  if(convey_begin( conv, sizeof(pkg_topo_t), 0 ) != convey_OK){return(-1);}
 
   /* initialize rowsum, rowcnt, and queue (queue holds degree one rows) */
   int64_t rownext, rowlast;
@@ -198,7 +199,7 @@ double toposort_matrix_convey(SHARED int64_t *rperm, SHARED int64_t *cperm, spar
   }
 
   convey_t * conv2 = convey_new(SIZE_MAX, 0, NULL, 0);
-  convey_begin( conv2, sizeof(pkg_cperm_t) );
+  convey_begin( conv2, sizeof(pkg_cperm_t), 0 );
   if(conv == NULL){return(-1);}
   pkg_cperm_t pkg2, pkg2_ptr;
 
@@ -369,7 +370,7 @@ sparsemat_t * generate_toposort_input(int64_t numrows, double prob, int64_t rand
 
   T0_fprintf(stderr,"Creating input matrix for toposort\n");fflush(stderr);
   double t = wall_seconds();
-  omat = gen_erdos_renyi_graph_dist(numrows, prob, 1, 2, rand_seed);
+  omat = transpose_matrix(erdos_renyi_random_graph(numrows, prob, UNDIRECTED, LOOPS, rand_seed));
   T0_printf("generate ER graph time %lf\n", wall_seconds() - t);
   if(!omat) exit(1);
   if(!is_upper_triangular(omat, 1))exit(1);

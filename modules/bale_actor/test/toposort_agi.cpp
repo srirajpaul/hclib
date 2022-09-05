@@ -43,6 +43,7 @@
 extern "C" {
 #include "spmat.h"
 }
+#include <std_options.h>
 
 double toposort_matrix_agi(SHARED int64_t *rperm, SHARED int64_t *cperm, sparsemat_t *mat, sparsemat_t *tmat) {
   //T0_printf("Running Toposort with UPC ...");
@@ -291,7 +292,7 @@ sparsemat_t * generate_toposort_input(int64_t numrows, double prob, int64_t rand
 
   T0_fprintf(stderr,"Creating input matrix for toposort\n");fflush(stderr);
   double t = wall_seconds();
-  omat = gen_erdos_renyi_graph_dist(numrows, prob, 1, 2, rand_seed);
+  omat = transpose_matrix(erdos_renyi_random_graph(numrows, prob, UNDIRECTED, LOOPS, rand_seed));
   T0_printf("generate ER graph time %lf\n", wall_seconds() - t);
   if(!omat) exit(1);
   if(!is_upper_triangular(omat, 1))exit(1);

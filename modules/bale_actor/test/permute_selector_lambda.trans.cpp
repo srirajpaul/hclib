@@ -123,7 +123,7 @@ sparsemat_t *permute_matrix_selector(sparsemat_t *A, int64_t *rperminv,
   assert(A->nnz = lgp_reduce_add_l(lnnz));
 
   // allocate pmat to the max of the new number of nonzeros per thread
-  Ap = init_matrix(A->numrows, A->numcols, lnnz);
+  Ap = init_matrix(A->numrows, A->numcols, lnnz, 0);
   delete ps1_ptr;
   if (Ap == NULL)
     return (NULL);
@@ -365,8 +365,7 @@ int main(int argc, char *argv[]) {
     int64_t *rp = rand_permp(numrows, seed);
     int64_t *cp = rand_permp(numrows, seed + 1);
 
-    sparsemat_t *inmat =
-        gen_erdos_renyi_graph_dist(numrows, erdos_renyi_prob, 0, 3, seed + 2);
+    sparsemat_t * inmat = erdos_renyi_random_graph(numrows, erdos_renyi_prob, DIRECTED, NOLOOPS, seed + 2);
     if (inmat == NULL) {
       T0_printf("ERROR: inmat is null!\n");
       assert(false);

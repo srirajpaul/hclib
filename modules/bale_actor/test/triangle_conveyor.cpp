@@ -44,6 +44,7 @@
 extern "C" {
 #include <spmat.h>
 }
+#include <std_options.h>
 
 typedef struct pkg_tri_t {
     int64_t w;    
@@ -92,7 +93,7 @@ static int64_t copied_tri_convey_push_process(int64_t* c, convey_t* conv, sparse
 double copied_triangle_convey_push(int64_t* count, int64_t* sr, sparsemat_t* L, sparsemat_t* U, int64_t alg) {
     convey_t * conv = convey_new(SIZE_MAX, 0, NULL, 0);
     if (conv == NULL) return(-1);
-    if (convey_begin(conv, sizeof(pkg_tri_t)) != convey_OK) return(-1);
+    if (convey_begin(conv, sizeof(pkg_tri_t), 0) != convey_OK) return(-1);
 
     int64_t cnt = 0;
     int64_t numpushed = 0;
@@ -174,8 +175,8 @@ sparsemat_t* generate_kronecker_graph(
         for(int i = 0; i < C_num; i++) T0_fprintf(stderr, "%ld ", C_spec[i]);   
     T0_fprintf(stderr, "\n");
 
-    sparsemat_t* B = gen_local_mat_from_stars(B_num, B_spec, mode);
-    sparsemat_t* C = gen_local_mat_from_stars(C_num, C_spec, mode);   
+    sparsemat_t* B = kronecker_product_of_stars(B_num, B_spec, mode);
+    sparsemat_t* C = kronecker_product_of_stars(C_num, C_spec, mode);
     if(!B || !C) {
         T0_fprintf(stderr,"ERROR: triangles: error generating input!\n"); lgp_global_exit(1);
     }
@@ -183,7 +184,7 @@ sparsemat_t* generate_kronecker_graph(
     T0_fprintf(stderr, "B has %ld rows/cols and %ld nnz\n", B->numrows, B->lnnz);
     T0_fprintf(stderr, "C has %ld rows/cols and %ld nnz\n", C->numrows, C->lnnz);
 
-    sparsemat_t* A = kron_prod_dist(B, C, 1);
+    sparsemat_t* A = kronecker_product_graph_dist(B, C);
   
     return A;
 }
@@ -319,7 +320,7 @@ int main (int argc, char* argv[]) {
 
         L = generate_kronecker_graph(kron_specs, half, &kron_specs[half], num_ints - half, kron_graph_mode);
     } else {
-        L = gen_erdos_renyi_graph_dist(numrows, erdos_renyi_prob, 0, 1, 12345);
+        L = erdos_renyi_random_graph(numrows, erdos_renyi_prob, UNDIRECTED, NOLOOPS, 12345);
     }
 
     lgp_barrier();

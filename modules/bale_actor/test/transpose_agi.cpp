@@ -97,7 +97,7 @@ sparsemat_t* copied_transpose_matrix_agi(sparsemat_t* A) {
         lnnz += l_shtmp[i];
     }
   
-    At = init_matrix(A->numcols, A->numrows, lnnz);
+    At = init_matrix(A->numcols, A->numrows, lnnz, 0);
     if (!At) {
         printf("ERROR: transpose_matrix_upc: init_matrix failed!\n");
         
@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
     minavgmaxD_t stat[1];
     int64_t error = 0;
     
-    inmat = gen_erdos_renyi_graph_dist(numrows, erdos_renyi_prob, 0, 3, seed + 2);
+    inmat = erdos_renyi_random_graph(numrows, erdos_renyi_prob, DIRECTED, NOLOOPS, seed + 2);
     if (!inmat) {
         T0_printf("ERROR: inmat is null!\n");
 

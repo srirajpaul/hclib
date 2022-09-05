@@ -44,6 +44,7 @@
 extern "C" {
 #include "spmat.h"
 }
+#include <std_options.h>
 #undef USE_LAMBDA
 #include "selector.h"
 
@@ -201,8 +202,8 @@ sparsemat_t *generate_kronecker_graph(int64_t *B_spec, int64_t B_num,
     T0_fprintf(stderr, "%ld ", C_spec[i]);
   T0_fprintf(stderr, "\n");
 
-  sparsemat_t *B = gen_local_mat_from_stars(B_num, B_spec, mode);
-  sparsemat_t *C = gen_local_mat_from_stars(C_num, C_spec, mode);
+  sparsemat_t* B = kronecker_product_of_stars(B_num, B_spec, mode);
+  sparsemat_t* C = kronecker_product_of_stars(C_num, C_spec, mode);
   if (!B || !C) {
     T0_fprintf(stderr, "ERROR: triangles: error generating input!\n");
     lgp_global_exit(1);
@@ -211,7 +212,7 @@ sparsemat_t *generate_kronecker_graph(int64_t *B_spec, int64_t B_num,
   T0_fprintf(stderr, "B has %ld rows/cols and %ld nnz\n", B->numrows, B->lnnz);
   T0_fprintf(stderr, "C has %ld rows/cols and %ld nnz\n", C->numrows, C->lnnz);
 
-  sparsemat_t *A = kron_prod_dist(B, C, 1);
+  sparsemat_t* A = kronecker_product_graph_dist(B, C);
 
   return A;
 }
@@ -389,7 +390,7 @@ int main(int argc, char *argv[]) {
       L = generate_kronecker_graph(kron_specs, half, &kron_specs[half],
                                    num_ints - half, kron_graph_mode);
     } else {
-      L = gen_erdos_renyi_graph_dist(numrows, erdos_renyi_prob, 0, 1, 12345);
+      L = erdos_renyi_random_graph(numrows, erdos_renyi_prob, UNDIRECTED, NOLOOPS, 12345);
     }
 
     lgp_barrier();

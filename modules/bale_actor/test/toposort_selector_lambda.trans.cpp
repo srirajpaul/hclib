@@ -44,6 +44,7 @@
 extern "C" {
 #include "spmat.h"
 }
+#include <std_options.h>
 #undef USE_LAMBDA
 #include "selector.h"
 
@@ -407,7 +408,7 @@ sparsemat_t *generate_toposort_input(int64_t numrows, double prob,
   T0_fprintf(stderr, "Creating input matrix for toposort\n");
   fflush(stderr);
   double t = wall_seconds();
-  omat = gen_erdos_renyi_graph_dist(numrows, prob, 1, 2, rand_seed);
+  omat = transpose_matrix(erdos_renyi_random_graph(numrows, prob, UNDIRECTED, LOOPS, rand_seed));
   T0_printf("generate ER graph time %lf\n", wall_seconds() - t);
   if (!omat)
     exit(1);

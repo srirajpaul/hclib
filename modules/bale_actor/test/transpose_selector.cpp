@@ -140,7 +140,7 @@ sparsemat_t* transpose_matrix_selector(sparsemat_t* A) {
     int64_t sum = lgp_reduce_add_l(lnnz);
     assert(A->nnz == sum); 
   
-    sparsemat_t* At = init_matrix(A->numcols, A->numrows, lnnz);
+    sparsemat_t* At = init_matrix(A->numcols, A->numrows, lnnz, 0);
     if (!At) {
         printf("ERROR: transpose_matrix: init_matrix failed!\n");
         
@@ -264,7 +264,7 @@ int main(int argc, char** argv) {
         double t1;
         minavgmaxD_t stat[1];
         
-        inmat = gen_erdos_renyi_graph_dist(numrows, erdos_renyi_prob, 0, 3, seed + 2);
+        inmat = erdos_renyi_random_graph(numrows, erdos_renyi_prob, DIRECTED, NOLOOPS, seed + 2);
         if (!inmat) {
             T0_printf("ERROR: inmat is null!\n");
             assert(false);
