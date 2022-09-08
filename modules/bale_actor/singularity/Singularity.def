@@ -43,7 +43,7 @@ git checkout tags/bale-2.1 -b bale-2.1
 chmod +x ./install.sh
 ./install.sh -s -f
 
-BALE_INSTALL=/root/bale/build_unknown
+BALE_INSTALL=/root/local/bale/build_unknown
 
 cd /root
 git clone https://github.com/srirajpaul/hclib
