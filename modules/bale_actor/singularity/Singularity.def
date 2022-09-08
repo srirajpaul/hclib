@@ -43,7 +43,7 @@ cd /root/bale/src/bale_classic
 ./bootstrap.sh
 python3.8 ./make_bale -s
 
-BALE_INSTALL=/root/bale/src/bale_classic/build_unknown
+BALE_INSTALL=/root/local/bale/src/bale_classic/build_unknown
 
 cd /root
 git clone https://github.com/srirajpaul/hclib
