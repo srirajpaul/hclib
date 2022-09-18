@@ -67,7 +67,7 @@ double ig_nbi_shmem(int64_t *tgt, int64_t *pckindx, int64_t l_num_req,  int64_t 
         int64_t pe, col;
         col = pckindx[i] >> 16;
         pe = pckindx[i] & 0xffff;
-        shmem_get_nbi(tgt+i, ltable+col, 1, pe);
+        shmem_int64_get_nbi(tgt+i, ltable+col, 1, pe);
     }
 
     tm = wall_seconds() - tm;

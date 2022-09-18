@@ -61,7 +61,7 @@ double put_nbi_shmem(int64_t *pckindx, int64_t T,  int64_t *lcounts) {
     int64_t pe, col;
     col = pckindx[i] >> 16;
     pe  = pckindx[i] & 0xffff;
-    shmem_put_nbi(lcounts+col, &val, 1,  pe);
+    shmem_int64_put_nbi(lcounts+col, &val, 1,  pe);
   }
 
   lgp_barrier();
