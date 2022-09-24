@@ -61,26 +61,29 @@ extern "C" {
 double ig_selector_shmem(int64_t *tgt, int64_t *pckindx, int64_t l_num_req,  int64_t *ltable) {
 
     minavgmaxD_t stat[1];
-    Get_nbi<int64_t> *shmem_get_nbi = new Get_nbi<int64_t>();
+    Get_nbi<int64_t> shmem_get_nbi;
 
     lgp_barrier();
     double tm = wall_seconds();
-    hclib::finish([=]() {
+
+    hclib_start_finish();
+    shmem_get_nbi.start();
+
       for(int i=0;i<l_num_req;i++) {
           int64_t pe, col;
           col = pckindx[i] >> 16;
           pe = pckindx[i] & 0xffff;
-          (*shmem_get_nbi)(tgt+i, ltable+col, 1, pe);
+          shmem_get_nbi(tgt+i, ltable+col, 1, pe);
       }
-      shmem_get_nbi->done(); // Indicate that we are done with sending messages to the REQUEST mailbox
-    });
+
+    shmem_get_nbi.done(); // Indicate that we are done with sending messages to the REQUEST mailbox
+    hclib_end_finish();
 
     tm = wall_seconds() - tm;
     lgp_barrier();
 
     lgp_min_avg_max_d( stat, tm, THREADS );
 
-    delete shmem_get_nbi;
     return( stat->avg );
 }
 

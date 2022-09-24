@@ -53,26 +53,30 @@ extern "C" {
 
 double put_selector_shmem(int64_t *pckindx, int64_t T,  int64_t *lcounts) {
   minavgmaxD_t stat[1];
-  Put_nbi<int64_t> *shmem_put_nbi = new Put_nbi<int64_t>();
+  Put_nbi<int64_t> shmem_put_nbi;
 
   lgp_barrier();
   double tm = wall_seconds();
-  hclib::finish([=]() {
+
+  hclib_start_finish();
+  shmem_put_nbi.start();
+
     int64_t val = VAL;
     for(int i=0; i< T; i++){
       int64_t pe, col;
       col = pckindx[i] >> 16;
       pe  = pckindx[i] & 0xffff;
-      (*shmem_put_nbi)(lcounts+col, &val, 1,  pe);
+      shmem_put_nbi(lcounts+col, &val, 1,  pe);
     }
-    shmem_put_nbi->done();
-  });
+
+  shmem_put_nbi.done();
+  hclib_end_finish();
+
   lgp_barrier();
 
   tm = wall_seconds() - tm;
   lgp_min_avg_max_d( stat, tm, THREADS );
 
-  delete shmem_put_nbi;
   return stat->avg;
 }
 

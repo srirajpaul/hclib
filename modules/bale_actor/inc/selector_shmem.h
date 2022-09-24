@@ -31,7 +31,7 @@ class Put_nbi : public hclib::Actor<P> {
   public:
     Put_nbi() {
         hclib::Actor<P>::mb[0].process = [this](P pkt, int sender_rank) { this->process(pkt, sender_rank);};
-        hclib::Actor<P>::start();
+        //hclib::Actor<P>::start();
     }
 
     void operator()(T *dest, T *src, size_t nelems,  int pe) {
@@ -59,7 +59,7 @@ class Get_nbi: public hclib::Selector<2, P>{
     Get_nbi() {
         hclib::Selector<2, P>::mb[REQUEST].process = [this](P pkt, int sender_rank) { this->req_process(pkt, sender_rank); };
         hclib::Selector<2, P>::mb[RESPONSE].process = [this](P pkt, int sender_rank) { this->resp_process(pkt, sender_rank); };
-        hclib::Selector<2, P>::start();
+        //hclib::Selector<2, P>::start();
     }
 
     void operator()(T *dest, T *src, size_t nelems, int pe) {
