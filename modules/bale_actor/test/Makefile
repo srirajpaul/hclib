@@ -13,7 +13,7 @@ TARGETS=test_conveyor test_selector test_selector3 \
         permute_agi permute_conveyor permute_selector permute_selector_lambda \
         transpose_agi transpose_conveyor transpose_selector transpose_selector_lambda \
         put_selector_shmem put_nbi_shmem \
-        get_selector_shmem get_nbi_shmem
+        get_selector_shmem get_nbi_shmem atomic_inc_selector_shmem atomic_add_selector_shmem
 
 TARGETS_PURE=toposort_pure_selector randperm_pure_selector
 

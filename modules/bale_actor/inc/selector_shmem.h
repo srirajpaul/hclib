@@ -11,6 +11,14 @@ struct PutPkt {
 };
 
 template<typename T>
+struct AtomicIncPkt {
+    T *loc;
+};
+
+template<typename T>
+using AtomicAddPkt = PutPkt<T>;
+
+template<typename T>
 struct GetPkt {
     T *dest;
     union {
@@ -39,6 +47,42 @@ class Put_nbi : public hclib::Actor<P> {
             hclib::Actor<P>::send({dest+i, src[i]}, pe);
         }
         //hclib::Actor<P>::send({loc, val}, pe);
+    }
+};
+
+template<typename T, typename P=AtomicIncPkt<T>>
+class AtomicInc : public hclib::Actor<P> {
+
+  void process(P pkt, int sender_rank) {
+      *(pkt.loc) = *(pkt.loc) + 1;
+  }
+
+  public:
+    AtomicInc() {
+        hclib::Actor<P>::mb[0].process = [this](P pkt, int sender_rank) { this->process(pkt, sender_rank);};
+        //hclib::Actor<P>::start();
+    }
+
+    void operator()(T *dest, int pe) {
+        hclib::Actor<P>::send({dest}, pe);
+    }
+};
+
+template<typename T, typename P=AtomicAddPkt<T>>
+class AtomicAdd : public hclib::Actor<P> {
+
+  void process(P pkt, int sender_rank) {
+      *(pkt.loc) = *(pkt.loc) + pkt.val;;
+  }
+
+  public:
+    AtomicAdd() {
+        hclib::Actor<P>::mb[0].process = [this](P pkt, int sender_rank) { this->process(pkt, sender_rank);};
+        //hclib::Actor<P>::start();
+    }
+
+    void operator()(T *dest, T val,  int pe) {
+        hclib::Actor<P>::send({dest, val}, pe);
     }
 };
 
