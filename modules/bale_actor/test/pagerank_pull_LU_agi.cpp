@@ -22,7 +22,7 @@ extern "C" {
 #define THREADS shmem_n_pes()
 #define MYTHREAD shmem_my_pe()
 
-double pagerank_agi(sparsemat_t* L, double* page_rank, double* page_rank_curr_iter, int64_t* degrees_total) {
+double pagerank_agi(sparsemat_t* L, double* lpage_rank, double* page_rank_curr_iter) {//, int64_t* degrees_total) {
     // Start timing
     double t1 = wall_seconds();
     lgp_barrier();
@@ -44,7 +44,7 @@ double pagerank_agi(sparsemat_t* L, double* page_rank, double* page_rank_curr_it
                 int64_t pe_src = L->lnonzero[k] % THREADS;
                 int64_t src_idx = L->lnonzero[k] / THREADS;
 
-                double pr_y = lgp_get_double(page_rank + src_idx, pe_src);
+                double pr_y = lgp_get_double(lpage_rank + src_idx, pe_src);
                 int64_t deg_y_upper = lgp_get_int64(L->offset, L->lnonzero[k] + THREADS);//lgp_get_int64(degrees_total + src_idx, pe_src);
                 int64_t deg_y_lower = lgp_get_int64(L->offset, L->lnonzero[k]);
                 page_rank_curr_iter[y] += pr_y / (double)(deg_y_upper - deg_y_lower);
@@ -56,7 +56,7 @@ double pagerank_agi(sparsemat_t* L, double* page_rank, double* page_rank_curr_it
         // calculate page rank (full calculation) and current error
         for (int64_t i = 0; i < L->lnumrows; i++) {
             page_rank_curr_iter[i] = ((1-damping) / L->numrows) + (damping * page_rank_curr_iter[i]);
-            error_current = error_current + fabs(page_rank_curr_iter[i] - page_rank[i]);
+            error_current = error_current + fabs(page_rank_curr_iter[i] - lpage_rank[i]);
         }
         shmem_barrier_all();
 
@@ -68,7 +68,7 @@ double pagerank_agi(sparsemat_t* L, double* page_rank, double* page_rank_curr_it
         if (error_all_pes < error_delta) break;
 
         // update new page rank values
-        for (int64_t i = 0; i < L->lnumrows; i++) page_rank[i] = page_rank_curr_iter[i];
+        for (int64_t i = 0; i < L->lnumrows; i++) lpage_rank[i] = page_rank_curr_iter[i];
         shmem_barrier_all();
 
         // increment num of iterations
@@ -275,20 +275,21 @@ int main(int argc, char* argv[]) {
     int64_t pr_size = lpr_size * THREADS;
     // create and initialize new page rank array
     double* page_rank = (double*)lgp_all_alloc(pr_size, sizeof(double));
-    for (int64_t x = 0; x < lpr_size; x++) page_rank[x] = 1.0/pr_size; // Initalize page ranks to 1/N
+    double* lpage_rank = lgp_local_part(double, page_rank);
+    for (int64_t x = 0; x < lpr_size; x++) lpage_rank[x] = 1.0/pr_size; // Initalize page ranks to 1/N
     // create and initialize new page rank array for current iteration values
-    double* page_rank_curr_iter = (double*)lgp_all_alloc(pr_size, sizeof(double));
+    double* page_rank_curr_iter = (double*)calloc(lpr_size, sizeof(double));//pr_size, sizeof(double));
     for (int64_t x = 0; x < lpr_size; x++) page_rank_curr_iter[x] = 0.0;
     // create and initialize degrees of each vertex
-    int64_t* degrees_total = (int64_t*)lgp_all_alloc(pr_size, sizeof(int64_t));
-    for (int64_t x = 0; x < lpr_size; x++) degrees_total[x] = A2->loffset[x+1] - A2->loffset[x];
+    //int64_t* degrees_total = (int64_t*)lgp_all_alloc(pr_size, sizeof(int64_t));
+    //for (int64_t x = 0; x < lpr_size; x++) degrees_total[x] = A2->loffset[x+1] - A2->loffset[x];
 
     lgp_barrier();
 
     double laptime_pagerank = 0.0;
 
     // Running agi model for pagerank
-    laptime_pagerank = pagerank_agi(A2, page_rank, page_rank_curr_iter, degrees_total);
+    laptime_pagerank = pagerank_agi(A2, lpage_rank, page_rank_curr_iter);//, degrees_total);
     lgp_barrier();
     //for (int64_t x = 0; x < lpr_size; x++) printf("page rank: %f\n", page_rank[x]);
     T0_fprintf(stderr, "  %8.5lf seconds\n", laptime_pagerank);
