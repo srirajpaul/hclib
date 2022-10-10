@@ -315,10 +315,10 @@ int main(int argc, char* argv[]) {
     T0_fprintf(stderr, "\nRunning Jaccard Index (agi): \n");
 
     int64_t ljaccard_size = lgp_reduce_max_l(A2->lnnz);
-    double* jaccard_index = (double*)lgp_all_alloc(ljaccard_size*THREADS, sizeof(double));
+    double* jaccard_index = (double*)calloc(ljaccard_size, sizeof(double));
     for (int64_t x = 0; x < ljaccard_size; x++) jaccard_index[x] = 0;
     // get the degrees of each vertex
-    int64_t* edge_degrees = (int64_t*)lgp_all_alloc(ljaccard_size*THREADS, sizeof(int64_t));
+    int64_t* edge_degrees = (int64_t*)calloc(ljaccard_size, sizeof(int64_t));
     for (int64_t x = 0; x < ljaccard_size; x++) edge_degrees[x] = 0;
     lgp_barrier();
     get_edge_degrees(A2, edge_degrees);
