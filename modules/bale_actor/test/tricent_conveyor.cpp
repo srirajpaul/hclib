@@ -36,7 +36,7 @@ static int64_t update_vertex_push_process(sparsemat_t* L, int64_t* vertex_tri_co
     
     while (convey_pull(replies, &pkg, NULL) == convey_OK) {
         vertex_tri_count[pkg.pos]++; // update T(vertex)
-
+        
         // update tri_N(vertex) for w,u , w,v  ,  u,w , u,v  ,  v,w , v,u
         for (int64_t k = L->loffset[pkg.pos]; k < L->loffset[pkg.pos + 1]; k++) {
             if (pkg.first_neigh == L->lnonzero[k] || pkg.second_neigh == L->lnonzero[k]) {
@@ -48,38 +48,32 @@ static int64_t update_vertex_push_process(sparsemat_t* L, int64_t* vertex_tri_co
     return convey_advance(replies, done);
 }
 
-static int64_t tri_convey_push_process(int64_t* c, convey_t* conv, int64_t* vertex_tri_count, sparsemat_t* mat, int64_t done) {
+static int64_t tri_convey_push_process(int64_t* c, convey_t* conv, convey_t* replies, int64_t* vertex_tri_count, sparsemat_t* mat, int64_t done) {
     int64_t k, from, cnt = 0;
     TrianglePkt pkg;
     TrianglePkt triPKG;
 
-    convey_t * replies = convey_new(SIZE_MAX, 0, NULL, 0);if (replies == NULL) return(-1);
-    if (convey_begin(replies, sizeof(TrianglePkt), 0) != convey_OK) return(-1);
-
     while (convey_pull(conv, &pkg, &from) == convey_OK) {
         //Is pkg.w on row pkg.vj
-        for (k = mat->loffset[pkg.v/THREADS]; k < mat->loffset[pkg.v/THREADS + 1]; k++) {
+        update_vertex_push_process(mat, vertex_tri_count, replies, 0); //pull before push to guarantee success
+        for (k = mat->loffset[pkg.v/THREADS]; k < mat->loffset[pkg.v/THREADS + 1]; k++){
             int64_t nnz_x = mat->lnonzero[k]; if (nnz_x >= mat->numrows) nnz_x = nnz_x - mat->numrows; // conversion due to negating triangle neighbor nnz's
             if (pkg.w == nnz_x) {
-                cnt ++;
+                cnt++;
 
                 // update T(u) and tri_N(u)
+                //update_vertex_push_process(mat, vertex_tri_count, replies, 0); //pull before push to guarantee success
                 triPKG.pos = pkg.u;
                 triPKG.first_neigh = pkg.w;
                 triPKG.second_neigh = pkg.v;
-                if (! convey_push(replies, &triPKG, from)) {
-                    update_vertex_push_process(mat, vertex_tri_count, replies, 0);
-                    k--;
-                }
+                convey_push(replies, &triPKG, from);
 
                 // update T(w) and tri_N(w)
+                update_vertex_push_process(mat, vertex_tri_count, replies, 0); //pull before push to guarantee success
                 triPKG.pos = pkg.w / THREADS;
                 triPKG.first_neigh = pkg.u * THREADS + from;
                 triPKG.second_neigh = pkg.v;
-                if (! convey_push(replies, &triPKG, pkg.w%THREADS)) {
-                    update_vertex_push_process(mat, vertex_tri_count, replies, 0);
-                    k--;
-                }
+                convey_push(replies, &triPKG, pkg.w%THREADS);
 
                 vertex_tri_count[pkg.v/THREADS]++; // update T(vertex)
                 // update tri_N(vertex) for w,u , w,v  ,  u,w , u,v  ,  v,w , v,u
@@ -97,16 +91,15 @@ static int64_t tri_convey_push_process(int64_t* c, convey_t* conv, int64_t* vert
     }
     *c += cnt;
 
-    while (update_vertex_push_process(mat, vertex_tri_count, replies, 1)) {} // keep popping til all threads are done
-
-    free(replies);
-
     return convey_advance(conv, done);
 }
 
 double tricount_conveyor(int64_t* count, sparsemat_t* L, int64_t* vertex_tri_count) {
     convey_t * conv = convey_new(SIZE_MAX, 0, NULL, 0); if (conv == NULL) return(-1);
     if (convey_begin(conv, sizeof(TrianglePkt), 0) != convey_OK) return(-1);
+
+    convey_t * replies = convey_new(SIZE_MAX, 0, NULL, 0); if (replies == NULL) return(-1);
+    if (convey_begin(replies, sizeof(TrianglePkt), 0) != convey_OK) return(-1);
 
     int64_t cnt = 0;
     lgp_barrier();
@@ -135,15 +128,18 @@ double tricount_conveyor(int64_t* count, sparsemat_t* L, int64_t* vertex_tri_cou
                     break;
 
                 if (convey_push(conv, &pkg, pe) != convey_OK) {
-                    tri_convey_push_process(&cnt, conv, vertex_tri_count, L, 0); 
+                    tri_convey_push_process(&cnt, conv, replies, vertex_tri_count, L, 0); 
                     kk--;
                 }
             }
         }
     }
-    while (tri_convey_push_process(&cnt, conv, vertex_tri_count, L, 1)) {}// keep popping til all threads are done
-
+    while (tri_convey_push_process(&cnt, conv, replies, vertex_tri_count, L, 1)) {}// keep popping til all threads are done
+    while (update_vertex_push_process(L, vertex_tri_count, replies, 1)) {} // keep popping til all threads are done
     lgp_barrier();
+
+    convey_free(conv);
+    convey_free(replies);
 
     *count = cnt;
     t1 = wall_seconds() - t1;
