@@ -141,7 +141,7 @@ sparsemat_t * generate_kronecker_graph(int64_t * B_spec, int64_t B_num, int64_t 
 }
 */
 
-double tricount_agi(int64_t *count, sparsemat_t * L, int64_t* lvertex_tri_count) {
+double tricount_agi(int64_t *count, sparsemat_t * L, int64_t* vertex_tri_count, int64_t* lvertex_tri_count) {
   int64_t cnt=0;
   int64_t l_i, ii, k, kk, w, L_i, L_j;
    
@@ -169,8 +169,8 @@ double tricount_agi(int64_t *count, sparsemat_t * L, int64_t* lvertex_tri_count)
             cnt++;
 
             lvertex_tri_count[l_i]++; //vertex u is local
-            lgp_fetch_and_inc(lvertex_tri_count + L_j / THREADS, L_j % THREADS); //vertex v is possibly remote 
-            lgp_fetch_and_inc(lvertex_tri_count + w / THREADS, w % THREADS); // vertex w is possibly remote
+            lgp_fetch_and_inc(vertex_tri_count, L_j + L_j%THREADS); //vertex v is possibly remote 
+            lgp_fetch_and_inc(vertex_tri_count, w + w%THREADS); // vertex w is possibly remote
 
             // update tri_N(u)
             // loop through u's nonzeros, first_neigh is w, second_neigh is v
@@ -218,7 +218,7 @@ double tricount_agi(int64_t *count, sparsemat_t * L, int64_t* lvertex_tri_count)
   return(t1);
 }
 
-double tricent_agi(int64_t total_tri_cnt, double* tricent_counts, sparsemat_t* L, int64_t* lvertex_tri_count) {
+double tricent_agi(int64_t total_tri_cnt, double* tricent_counts, sparsemat_t* L, int64_t* vertex_tri_count, int64_t* lvertex_tri_count) {
   // Start timing
   double t2 = wall_seconds();
   lgp_barrier();
@@ -229,11 +229,11 @@ double tricent_agi(int64_t total_tri_cnt, double* tricent_counts, sparsemat_t* L
       if (u >= L->numrows) {
         // nnz is in tri_N(v) set, update (1/3)*T(u) / T(G)
         u = u - L->numrows;
-        int64_t tri_count_neigh = lgp_get_int64(lvertex_tri_count + u / THREADS, u % THREADS);
+        int64_t tri_count_neigh = lgp_get_int64(vertex_tri_count, u);
         tricent_counts[v] += (((double)1/3) * ((double)tri_count_neigh)) / (double)total_tri_cnt;
       } else {
         // nnz is in N(v)\tri_N(v), update (1)*T(u) / T(G)
-        int64_t tri_count_non_neigh = lgp_get_int64(lvertex_tri_count + u / THREADS, u % THREADS);
+        int64_t tri_count_non_neigh = lgp_get_int64(vertex_tri_count, u);
         tricent_counts[v] += ((double)tri_count_non_neigh) / (double)total_tri_cnt;
       }
     }
@@ -422,7 +422,7 @@ int main(int argc, char * argv[]) {
 
   // Running agi model for triangle counting
   T0_fprintf(stderr, "\nrunning tricount (agi) ... \n");
-  laptime_tricount = tricount_agi(&tri_cnt, A2, lvertex_tri_count);
+  laptime_tricount = tricount_agi(&tri_cnt, A2, vertex_tri_count, lvertex_tri_count);
   lgp_barrier();
   total_tri_cnt = lgp_reduce_add_l(tri_cnt);
   lgp_barrier();
@@ -430,7 +430,7 @@ int main(int argc, char * argv[]) {
   
   // Running agi model for triangle centrality
   T0_fprintf(stderr, "\nrunning tricent (agi) ... \n");
-  laptime_tricent = tricent_agi(total_tri_cnt, tricent_counts, A2, lvertex_tri_count);
+  laptime_tricent = tricent_agi(total_tri_cnt, tricent_counts, A2, vertex_tri_count, lvertex_tri_count);
   lgp_barrier();
   T0_fprintf(stderr, "  %8.5lf seconds\n", laptime_tricount+laptime_tricent);
   //for (int64_t x = 0; x < ltc_size; x++) printf("tricent: %f\n",tricent_counts[x]);
