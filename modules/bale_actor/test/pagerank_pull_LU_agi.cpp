@@ -22,7 +22,7 @@ extern "C" {
 #define THREADS shmem_n_pes()
 #define MYTHREAD shmem_my_pe()
 
-double pagerank_agi(sparsemat_t* L, double* lpage_rank, double* page_rank_curr_iter) {//, int64_t* degrees_total) {
+double pagerank_agi(sparsemat_t* L, double* page_rank, double* lpage_rank, double* page_rank_curr_iter) {//, int64_t* degrees_total) {
     // Start timing
     double t1 = wall_seconds();
     lgp_barrier();
@@ -44,7 +44,7 @@ double pagerank_agi(sparsemat_t* L, double* lpage_rank, double* page_rank_curr_i
                 int64_t pe_src = L->lnonzero[k] % THREADS;
                 int64_t src_idx = L->lnonzero[k] / THREADS;
 
-                double pr_y = lgp_get_double(lpage_rank + src_idx, pe_src);
+                double pr_y = lgp_get_double(page_rank, L->lnonzero[k]);
                 int64_t deg_y_upper = lgp_get_int64(L->offset, L->lnonzero[k] + THREADS);//lgp_get_int64(degrees_total + src_idx, pe_src);
                 int64_t deg_y_lower = lgp_get_int64(L->offset, L->lnonzero[k]);
                 page_rank_curr_iter[y] += pr_y / (double)(deg_y_upper - deg_y_lower);
@@ -289,7 +289,7 @@ int main(int argc, char* argv[]) {
     double laptime_pagerank = 0.0;
 
     // Running agi model for pagerank
-    laptime_pagerank = pagerank_agi(A2, lpage_rank, page_rank_curr_iter);//, degrees_total);
+    laptime_pagerank = pagerank_agi(A2, page_rank, lpage_rank, page_rank_curr_iter);//, degrees_total);
     lgp_barrier();
     //for (int64_t x = 0; x < lpr_size; x++) printf("page rank: %f\n", page_rank[x]);
     T0_fprintf(stderr, "  %8.5lf seconds\n", laptime_pagerank);
