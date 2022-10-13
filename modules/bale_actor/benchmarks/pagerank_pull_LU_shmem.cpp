@@ -270,7 +270,7 @@ int main(int argc, char* argv[]) {
 
     T0_fprintf(stderr,"A2 has %ld rows/cols and %ld nonzeros.\n", A2->numrows, A2->nnz);
 
-    T0_fprintf(stderr, "\nRunning PageRank (agi): \n");
+    T0_fprintf(stderr, "\nRunning PageRank (shmem): \n");
 
     // create page rank array for final values
     int64_t lpr_size = A2->lnumrows;

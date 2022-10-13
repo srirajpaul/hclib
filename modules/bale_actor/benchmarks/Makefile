@@ -15,9 +15,10 @@ TARGETS=histo_agi histo_shmem histo_conveyor histo_selector \
         permute_agi permute_shmem permute_conveyor permute_selector \
         transpose_agi transpose_shmem transpose_conveyor transpose_selector \
         jaccard_agi jaccard_shmem jaccard_conveyor jaccard_selector \
-        pagerank_pull_LU_agi pagerank_pull_LU_shmem pagerank_pull_LU_conveyor pagerank_pull_LU_selector
+        pagerank_pull_LU_agi pagerank_pull_LU_shmem pagerank_pull_LU_conveyor pagerank_pull_LU_selector \
+        tricent_agi tricent_shmem tricent_conveyor tricent_selector
 
-TARGETS_UPC=histo_upc ig_upc toposort_upc triangle_upc randperm_upc permute_upc transpose_upc jaccard_upc pagerank_pull_LU_upc
+TARGETS_UPC=histo_upc ig_upc toposort_upc triangle_upc randperm_upc permute_upc transpose_upc jaccard_upc pagerank_pull_LU_upc tricent_upc
 
 all: $(TARGETS)
 
