@@ -155,8 +155,10 @@ class Mailbox {
         if(buff->full()) {
             if(is_early_exit)
                 return false;
-            else
+            else {
                 while(buff->full()) hclib::yield_at(nic);
+                fprintf(stderr, "buff is marked !full\n");
+            }
         }
         assert(!buff->full());
         buff->push_back(BufferPacket<T>(pkt, rank));
