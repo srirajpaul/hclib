@@ -71,7 +71,7 @@ class Mailbox {
     }
 
     void start() {
-        conv = convey_new(SIZE_MAX, 0, NULL, convey_opt_PROGRESS);
+        conv = convey_new(SIZE_MAX, 0, NULL, 0);
         assert( conv != nullptr );
         convey_begin(conv, sizeof(T), 0);
         done_mark.rank = DONE_MARK;
