@@ -126,7 +126,10 @@ class Mailbox {
             for(i=0;i<buff_size; i++){
                 bp = buff->operator[](i);
                 if( bp.rank == DONE_MARK) break;
-                if( !convey_push(conv, &(bp.data), bp.rank)) break;
+                if( !convey_push(conv, &(bp.data), bp.rank)) {
+                    fprintf(stderr, "no-push\n");
+                    break;
+                }
             }
             if(i>0)
             {
@@ -138,6 +141,7 @@ class Mailbox {
             int64_t from;
             T pop;
               //while(!get_dep_mb()->get_buffer()->full() &&  convey_pull(conv, &pop, &from) == convey_OK) {
+            
             while( convey_pull(conv, &pop, &from) == convey_OK) {
                 process(pop, from);
             }
