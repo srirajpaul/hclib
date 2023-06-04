@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 #define DONE_MARK -1
-#define BUFFER_SIZE 10000
+#define BUFFER_SIZE 1024
 #ifndef ELASTIC_BUFFER_SIZE
 #define ELASTIC_BUFFER_SIZE 128
 #endif
@@ -199,9 +199,9 @@ class Mailbox {
           //Assumes once 'advance' is called with done=true, the conveyor
           //enters endgame and subsequent value of 'done' is ignored
           while(convey_advance(conv, bp.rank == DONE_MARK)) {
-            if(bp.rank == DONE_MARK) {
-                fprintf(stderr, "endgame begin, my_pe: %d\n", shmem_my_pe());
-              }
+            // if(bp.rank == DONE_MARK) {
+            //     fprintf(stderr, "endgame begin, my_pe: %d\n", shmem_my_pe());
+            //   }
               int i;
               size_t buff_size = buff->size();
               for(i=0;i<buff_size; i++){
