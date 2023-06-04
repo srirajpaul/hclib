@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 #define DONE_MARK -1
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 10000
 #ifndef ELASTIC_BUFFER_SIZE
 #define ELASTIC_BUFFER_SIZE 128
 #endif
