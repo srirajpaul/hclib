@@ -7,7 +7,7 @@ extern "C" {
 
 int main() {
     shmem_init();
-    convey_t* conveyor = convey_new_elastic(ELASTIC_BUFFER_SIZE, SIZE_MAX, 0, NULL, 0);
+    convey_t* conveyor = convey_new_elastic(128, SIZE_MAX, 0, NULL, 0);
     //convey_new(SIZE_MAX, 0, NULL, 0);
     if(!conveyor){printf("ERROR: histo_conveyor: convey_new failed!\n"); return(-1.0);}
     int ret = convey_begin(conveyor, sizeof(int64_t), 0);
@@ -21,9 +21,9 @@ int main() {
             //if( !convey_push(conveyor, &val, pe)) break;
             if(!convey_epush(conveyor, 8, &val, pe)) break;
         }
-        int64_t pop;
+        convey_item_t pop;
         while( convey_epull(conveyor, &pop) == convey_OK) {
-            printf("In rank %d, val %d\n", shmem_my_pe(), pop);
+            //printf("In rank %d, val %d\n", shmem_my_pe(), pop);
         }
     }
     convey_free(conveyor);
