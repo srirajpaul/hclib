@@ -1,0 +1,11 @@
+--- src/hclib-runtime.c
++++ src/hclib-runtime.c
+@@ -1113,7 +1142,7 @@
+     hclib_worker_state *ws = CURRENT_WS_INTERNAL;
+     hclib_task_t *need_to_swap_ctx = NULL;
+     while (finish->counter > 1 && need_to_swap_ctx == NULL) {
+-        need_to_swap_ctx = find_and_run_task(ws, 1, &(finish->counter), 1,
++        need_to_swap_ctx = find_and_run_task(ws, 0, &(finish->counter), 1,
+                 finish);
+     }
+ 
