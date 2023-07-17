@@ -18,7 +18,7 @@ lib/libhclib_bale_actor.so: $(OBJS)
 	$(CXX) -shared -fPIC $(HCLIB_LDLIBS) $(HCLIB_LDFLAGS) -o ${CURDIR}/$@ $(OBJS)
 
 obj/hclib_bale_actor.o: src/hclib_bale_actor.cpp
-	$(CXX) -g -O3 -c -fPIC -std=c++11 -Iinc $^ -o $@ $(HCLIB_CFLAGS) $(DEFINES)
+	$(CXX) -g -O0 -c -fPIC -std=c++11 -Iinc $^ -o $@ $(HCLIB_CFLAGS) $(DEFINES)
 
 clean:
 	rm -f obj/*.o lib/*
