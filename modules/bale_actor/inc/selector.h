@@ -12,7 +12,7 @@ extern "C" {
 #define USE_BUFFER
 #endif
 
-#define ENABLE_TRACE 1
+// #define ENABLE_TRACE 1
 #define DONE_MARK -1
 #define BUFFER_SIZE 1024
 #ifndef ELASTIC_BUFFER_SIZE
