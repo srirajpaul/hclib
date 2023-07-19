@@ -12,6 +12,7 @@ extern "C" {
 #define USE_BUFFER
 #endif
 
+#define ENABLE_TRACE 1
 #define DONE_MARK -1
 #define BUFFER_SIZE 1024
 #ifndef ELASTIC_BUFFER_SIZE
@@ -19,6 +20,19 @@ extern "C" {
 #endif
 
 namespace hclib {
+int *nodeID;
+void trace_send(int64_t src, int64_t dst, int64_t size_T) {
+    static FILE *fptr = NULL;
+    if (fptr == NULL) {
+        char fname[32];
+        snprintf(fname, sizeof(fname), "PE%d_send.dat", shmem_my_pe());
+        fptr = fopen(fname, "w");
+    }
+    struct timespec tv;
+    clock_gettime(CLOCK_REALTIME, &tv);
+    double stamp = (double)tv.tv_sec + (double)tv.tv_nsec / 1000000000L;
+    fprintf(fptr, "%ld, %ld, %ld, %ld, %ld, %lf\n", nodeID[src], src, nodeID[dst], dst, size_T, stamp);
+}
 
 #ifdef USE_LAMBDA
 class BaseLambdaPacket {
@@ -151,6 +165,11 @@ class Mailbox {
     }
 #else
     bool send(T pkt, int rank) {
+
+#ifdef ENABLE_TRACE
+        trace_send(shmem_my_pe(), rank, sizeof(T));
+#endif 
+
 #ifdef USE_BUFFER
         if(buff->full()) {
             if(is_early_exit)
@@ -159,7 +178,7 @@ class Mailbox {
                 while(buff->full()) hclib::yield_at(nic);
         }
         assert(!buff->full());
-        buff->push_back(BufferPacket<T>(pkt, rank));
+        buff->push_back(BufferPacket<T>(pkt, rank));   
         return true;
 #else // USE_BUFFER
         int ret = convey_push(conv, &pkt, rank);
@@ -354,10 +373,27 @@ class Selector {
   protected:
 
   public:
+    void trace_nodeID() {
+        nodeID = (int*)shmem_malloc(sizeof(int));
+
+        char *nid = getenv("SLURM_NODEID");
+        int myNodeID = atoi(nid);
+        for (int i = 0; i < shmem_n_pes(); i++) {
+            shmem_put32(nodeID+shmem_my_pe(), &myNodeID, 1, i);
+        }
+        shmem_barrier_all();
+        for (int i = 0; i < shmem_n_pes(); i++) {
+            printf("PE:%d, Node %d\n", i, nodeID[i]);
+        }
+    }
 
     Mailbox<T, SIZE> mb[N];
 
     Selector(bool is_start = false) {
+        #ifdef ENABLE_TRACE
+        printf("Trace enabled\n");
+        trace_nodeID();
+        #endif
         if(is_start) {
             start();
         }
