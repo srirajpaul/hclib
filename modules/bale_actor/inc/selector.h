@@ -186,13 +186,14 @@ class Mailbox {
         assert(status == 0);
         hclib::async_at([=]{
 #ifdef USE_BUFFER
-          while(true) {
-              size_t buff_size = buff->size();
-              if(buff_size > 0) break;
-              hclib::yield_at(nic);
-          }
+        //   while(true) {
+        //       size_t buff_size = buff->size();
+        //       if(buff_size > 0) break;
+        //       hclib::yield_at(nic);
+        //   }
 
           BufferPacket<T> bp;
+          bp.rank == -2;
           if(buff->size() > 0)
             bp = buff->at(0);
 
