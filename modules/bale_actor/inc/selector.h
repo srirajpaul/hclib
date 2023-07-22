@@ -186,14 +186,39 @@ class Mailbox {
         assert(status == 0);
         hclib::async_at([=]{
 #ifdef USE_BUFFER
-        //   while(true) {
-        //       size_t buff_size = buff->size();
-        //       if(buff_size > 0) break;
-        //       hclib::yield_at(nic);
-        //   }
+        
+        /* PATCH 0.2023 (by Shubh S). Because of this case, we realise that buf.size() = 0 
+        assumes the fact : if there is "nothing to push", there would be "nothing to pull".
+        This assumption is violated specifically in the graph algorithms where, (for a PE, and a mailbox)
+        
+        let's say the node has incoming edges only, and
+        the decision on arriving at that node by some algorithm A follows no push but only pulls from 
+        all the neighbours in order to continue and finish. 
+        
+        In such case, the program would hang with the code below, as it would yield(), and
+        since there is nothing to push, it would yield from any other operation as well.
+
+        Types of Transactions:
+
+        send() - if partial, return true T_0. Else full yield(in a while). T_1
+        starter_worker_loop - if buf.size() == 0, yield T_2, else convey advance (push, pull) and then yield T_3
+
+        T_0 would complete and continue working on some other tasks. T_1 would yield because of our assumption of no push, only pull and buf.size being 0.
+        T_2 would yield, and T_3 would not enter ever provided T_2 exists!
+
+        Problem: Because T_0 is the only task running in this case, program would hang!   
+        Solution: Allow pulls even when buf.size() = 0, as after pulls, yield occurs!
+
+        Note: This is not a performance optimization but a bug solved which resulted from Bottom BFS experimentation with 2 PE's and scale = 16.
+
+         while(true) {
+                size_t buff_size = buff->size();
+                if(buff_size > 0) break;
+                hclib::yield_at(nic);
+         } 
+        */
 
           BufferPacket<T> bp;
-          bp.rank == -2;
           if(buff->size() > 0)
             bp = buff->at(0);
 
