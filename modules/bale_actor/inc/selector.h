@@ -2,6 +2,7 @@
 #ifndef SELECTOR_H
 #define SELECTOR_H
 
+#include<iostream>
 #include "safe_buffer.h"
 #include "hclib_bale_actor.h"
 extern "C" {
@@ -12,7 +13,7 @@ extern "C" {
 #define USE_BUFFER
 #endif
 
-// #define ENABLE_TRACE 1
+// #define ENABLE_TRACE
 #define DONE_MARK -1
 #define BUFFER_SIZE 1024
 #ifndef ELASTIC_BUFFER_SIZE
@@ -20,8 +21,9 @@ extern "C" {
 #endif
 
 namespace hclib {
-int *nodeID;
-void trace_send(int64_t src, int64_t dst, int64_t size_T) {
+//PEtoNodeMap will be used for tracing purpose when ENABLE_TRACE is defined
+int *PEtoNodeMap;
+void trace_send(int64_t src, int64_t dst, int64_t size_t) {
     static FILE *fptr = NULL;
     if (fptr == NULL) {
         char fname[32];
@@ -31,7 +33,7 @@ void trace_send(int64_t src, int64_t dst, int64_t size_T) {
     struct timespec tv;
     clock_gettime(CLOCK_REALTIME, &tv);
     double stamp = (double)tv.tv_sec + (double)tv.tv_nsec / 1000000000L;
-    fprintf(fptr, "%ld, %ld, %ld, %ld, %ld, %lf\n", nodeID[src], src, nodeID[dst], dst, size_T, stamp);
+    fprintf(fptr, "%ld, %ld, %ld, %ld, %ld, %lf\n", PEtoNodeMap[src], src, PEtoNodeMap[dst], dst, size_t, stamp);
 }
 
 #ifdef USE_LAMBDA
@@ -178,7 +180,7 @@ class Mailbox {
                 while(buff->full()) hclib::yield_at(nic);
         }
         assert(!buff->full());
-        buff->push_back(BufferPacket<T>(pkt, rank));   
+        buff->push_back(BufferPacket<T>(pkt, rank));
         return true;
 #else // USE_BUFFER
         int ret = convey_push(conv, &pkt, rank);
@@ -340,6 +342,30 @@ template<int N, typename T=int64_t, int SIZE=BUFFER_SIZE>
 class Selector {
 
   private:
+    void createPEtoNodeMap() {
+        PEtoNodeMap = (int*)shmem_malloc(sizeof(int));
+        if(PEtoNodeMap==NULL){
+            std::cout << "ERROR: Unable to allocate space for PEtoNodeMap pointer\n" << std::endl;
+            abort();
+        }
+        char *nid = getenv("SLURM_NODEID");
+        if(nid==NULL){
+            std::cout << "ERROR: Unable to retrieve NodeID\n" << std::endl;
+            abort();
+        }
+        int myNodeID = atoi(nid);
+        for (int i = 0; i < shmem_n_pes(); i++) {
+            shmem_put32(PEtoNodeMap+shmem_my_pe(), &myNodeID, 1, i);
+        }
+        shmem_barrier_all();
+        if(myNodeID==0 && shmem_my_pe()==0){
+            printf("Logical actor message trace enabled\n");
+            for (int i = 0; i < shmem_n_pes(); i++) {
+                printf("PE:%d, Node %d\n", i, PEtoNodeMap[i]);
+            }            
+        }
+
+    }
 #ifndef YIELD_LOOP
     void start_worker_loop() {
         for(int i=0;i<N;i++) {
@@ -373,26 +399,12 @@ class Selector {
   protected:
 
   public:
-    void trace_nodeID() {
-        nodeID = (int*)shmem_malloc(sizeof(int));
-
-        char *nid = getenv("SLURM_NODEID");
-        int myNodeID = atoi(nid);
-        for (int i = 0; i < shmem_n_pes(); i++) {
-            shmem_put32(nodeID+shmem_my_pe(), &myNodeID, 1, i);
-        }
-        shmem_barrier_all();
-        for (int i = 0; i < shmem_n_pes(); i++) {
-            printf("PE:%d, Node %d\n", i, nodeID[i]);
-        }
-    }
 
     Mailbox<T, SIZE> mb[N];
 
     Selector(bool is_start = false) {
         #ifdef ENABLE_TRACE
-        printf("Trace enabled\n");
-        trace_nodeID();
+        createPEtoNodeMap();
         #endif
         if(is_start) {
             start();
