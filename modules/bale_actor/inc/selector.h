@@ -343,7 +343,7 @@ class Selector {
 
   private:
     void createPEtoNodeMap() {
-        PEtoNodeMap = (int*)shmem_malloc(sizeof(int));
+        PEtoNodeMap = (int*)shmem_malloc(shmem_n_pes()*sizeof(int));
         if(PEtoNodeMap==NULL){
             std::cout << "ERROR: Unable to allocate space for PEtoNodeMap pointer\n" << std::endl;
             abort();
