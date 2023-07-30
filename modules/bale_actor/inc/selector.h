@@ -27,7 +27,7 @@ void trace_send(int64_t src, int64_t dst, int64_t size_t) {
     static FILE *fptr = NULL;
     if (fptr == NULL) {
         char fname[32];
-        snprintf(fname, sizeof(fname), "PE%d_send.dat", shmem_my_pe());
+        snprintf(fname, sizeof(fname), "PE%d_send.csv", shmem_my_pe());
         fptr = fopen(fname, "w");
     }
     struct timespec tv;
