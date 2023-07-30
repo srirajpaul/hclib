@@ -22,8 +22,14 @@ extern "C" {
 
 namespace hclib {
 //PEtoNodeMap will be used for tracing purpose when ENABLE_TRACE is defined
+#ifdef ENABLE_TRACE
+#ifndef USE_SHMEM
+#error "Trace generation can be used only when USE_SHMEM=1"
+#else
+#include "shmem.h"
+#endif
 int *PEtoNodeMap;
-void trace_send(int64_t src, int64_t dst, int64_t size_t) {
+void trace_send(int64_t src, int64_t dst, size_t pkg_size) {
     static FILE *fptr = NULL;
     if (fptr == NULL) {
         char fname[32];
@@ -33,8 +39,9 @@ void trace_send(int64_t src, int64_t dst, int64_t size_t) {
     struct timespec tv;
     clock_gettime(CLOCK_REALTIME, &tv);
     double stamp = (double)tv.tv_sec + (double)tv.tv_nsec / 1000000000L;
-    fprintf(fptr, "%ld, %ld, %ld, %ld, %ld, %lf\n", PEtoNodeMap[src], src, PEtoNodeMap[dst], dst, size_t, stamp);
+    fprintf(fptr, "%d, %ld, %d, %ld, %ld, %lf\n", PEtoNodeMap[src], src, PEtoNodeMap[dst], dst, pkg_size, stamp);
 }
+#endif
 
 #ifdef USE_LAMBDA
 class BaseLambdaPacket {
@@ -342,6 +349,7 @@ template<int N, typename T=int64_t, int SIZE=BUFFER_SIZE>
 class Selector {
 
   private:
+#ifdef ENABLE_TRACE
     void createPEtoNodeMap() {
         PEtoNodeMap = (int*)shmem_malloc(shmem_n_pes()*sizeof(int));
         if(PEtoNodeMap==NULL){
@@ -362,10 +370,10 @@ class Selector {
             printf("Logical actor message trace enabled\n");
             for (int i = 0; i < shmem_n_pes(); i++) {
                 printf("PE:%d, Node %d\n", i, PEtoNodeMap[i]);
-            }            
+            }
         }
-
     }
+#endif
 #ifndef YIELD_LOOP
     void start_worker_loop() {
         for(int i=0;i<N;i++) {
