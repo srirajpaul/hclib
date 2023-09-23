@@ -913,9 +913,21 @@ static void *worker_routine(void *args) {
     return NULL;
 }
 
+typedef struct{
+    LiteCtx* finishCtx;
+    hclib_task_t *thisTask;
+} _finish_ctx_resume_args_t;
+
 static void _finish_ctx_resume(void *arg) {
     LiteCtx *currentCtx = get_curr_lite_ctx();
-    LiteCtx *finishCtx = arg;
+
+    _finish_ctx_resume_args_t *args = (_finish_ctx_resume_args_t*)arg;
+    LiteCtx *finishCtx = args->finishCtx;
+
+    check_out_finish(args->thisTask->current_finish);
+    free(args->thisTask);
+    free(args);
+
     ctx_swap(currentCtx, finishCtx, __func__);
 
 #ifdef VERBOSE
@@ -936,8 +948,14 @@ void _help_wait(LiteCtx *ctx) {
 
     hclib_task_t *task = calloc(1, sizeof(*task));
     HASSERT(task);
+
+    _finish_ctx_resume_args_t *args = calloc(1, sizeof(*args));
+    HASSERT(args);
+    args->finishCtx = wait_ctx;
+    args->thisTask = task;
+
     task->_fp = _finish_ctx_resume; // reuse _finish_ctx_resume
-    task->args = wait_ctx;
+    task->args = args;
 
     spawn_escaping((hclib_task_t *)task, continuation_dep);
 
@@ -1015,8 +1033,14 @@ static void _help_finish_ctx(LiteCtx *ctx) {
     hclib_task_t *task = (hclib_task_t *)calloc(
             1, sizeof(*task));
     HASSERT(task);
+
+    _finish_ctx_resume_args_t *args = calloc(1, sizeof(*args));
+    HASSERT(args);
+    args->finishCtx = hclib_finish_ctx;
+    args->thisTask = task;
+
     task->_fp = _finish_ctx_resume;
-    task->args = hclib_finish_ctx;
+    task->args = args;
 
     /*
      * Create an async to handle the continuation after the finish, whose state
@@ -1095,8 +1119,14 @@ static void yield_helper(LiteCtx *ctx) {
     hclib_task_t *continuation = (hclib_task_t *)calloc(1,
             sizeof(*continuation));
     HASSERT(continuation);
+
+    _finish_ctx_resume_args_t *args = calloc(1, sizeof(*args));
+    HASSERT(args);
+    args->finishCtx = ctx->prev;
+    args->thisTask = continuation;
+
     continuation->_fp = _finish_ctx_resume;
-    continuation->args = ctx->prev;
+    continuation->args = args;
 
     spawn_escaping_at(locale, continuation, NULL);
 
@@ -1117,7 +1147,6 @@ void hclib_yield(hclib_locale_t *locale) {
 #ifdef HCLIB_STATS
     worker_stats[ws->id].count_yields++;
 #endif
-
     hclib_task_t *task;
     do {
         ws = CURRENT_WS_INTERNAL;
