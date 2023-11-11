@@ -28,14 +28,33 @@ namespace hclib {
 #else
 #include "shmem.h"
 #endif
-int *PEtoNodeMap;
-void trace_send(int64_t src, int64_t dst, size_t pkg_size) {
+FILE *get_trace_fptr(bool is_new, const char name[] = "") {
     static FILE *fptr = NULL;
-    if (fptr == NULL) {
-        char fname[32];
-        snprintf(fname, sizeof(fname), "PE%d_send.csv", shmem_my_pe());
+    if (fptr == NULL || is_new) {
+        char fname[256];
+	if (name != NULL && name[0] != '\0')
+	  snprintf(fname, sizeof(fname), "PE%d_%s_send.csv", shmem_my_pe(), name);
+	else
+	  snprintf(fname, sizeof(fname), "PE%d_send.csv", shmem_my_pe());
         fptr = fopen(fname, "w");
     }
+    return fptr;
+}
+
+/*
+  Library function to create a new file for trace output, e.g.:
+    char name[32];
+    sprintf(name, "phase_%d", 3);
+    hclib::new_file_for_selector_trace(name);
+    // Trace output is written to the file named "PE*_phase3_send.csv".
+ */
+void new_file_for_selector_trace(char name[]) {
+  FILE *fptr = get_trace_fptr(true, name);
+}
+
+int *PEtoNodeMap;
+void trace_send(int64_t src, int64_t dst, size_t pkg_size) {
+    FILE *fptr = get_trace_fptr(false);
     struct timespec tv;
     clock_gettime(CLOCK_REALTIME, &tv);
     double stamp = (double)tv.tv_sec + (double)tv.tv_nsec / 1000000000L;
