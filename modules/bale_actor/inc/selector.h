@@ -44,7 +44,7 @@ FILE *get_trace_fptr(bool is_new, const char name[] = "") {
 /*
   Library function to create a new file for trace output, e.g.:
     char name[32];
-    sprintf(name, "phase_%d", 3);
+    sprintf(name, "phase%d", 3);
     hclib::new_file_for_selector_trace(name);
     // Trace output is written to the file named "PE*_phase3_send.csv".
  */
