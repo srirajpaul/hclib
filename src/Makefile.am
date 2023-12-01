@@ -95,7 +95,17 @@ $(error Unknown OS)
 endif # LINUX
 endif # OSX
 else
+if RISCV64
+if LINUX
+libhclib_la_SOURCES += \
+fcontext/jump_riscv64_sysv_elf_gas.S \
+fcontext/make_riscv64_sysv_elf_gas.S
+else
+$(error Unknown OS)
+endif # LINUX
+else
 $(error Unknown architecture)
+endif # RISCV64
 endif # PPC64
 endif # X86_64
 endif # X86
