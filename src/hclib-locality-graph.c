@@ -586,8 +586,10 @@ void generate_locality_info(int *nworkers_out,
     int nworkers;
     if (nworkers_str) {
         nworkers = atoi(nworkers_str);
+#if 0
         fprintf(stderr, "WARNING: HCLIB_WORKERS provided, creating locale "
                 "graph based on %u workers\n", nworkers);
+#endif        
     } else {
         nworkers = sysconf(_SC_NPROCESSORS_ONLN);
         fprintf(stderr, "WARNING: HCLIB_WORKERS not provided, running with "
