@@ -254,8 +254,10 @@ void hclib_global_init() {
         load_locality_info(locality_graph_path, &nworkers, &graph,
                 &worker_paths);
     } else {
+#if 0
         fprintf(stderr, "WARNING: HCLIB_LOCALITY_FILE not provided, generating "
                 "sane default locality information\n");
+#endif
         generate_locality_info(&nworkers, &graph, &worker_paths);
     }
     check_locality_graph(graph, worker_paths, nworkers);
