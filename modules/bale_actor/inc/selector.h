@@ -3,6 +3,7 @@
 #define SELECTOR_H
 
 #include<iostream>
+#include<vector>
 #include "safe_buffer.h"
 #include "hclib_bale_actor.h"
 extern "C" {
@@ -23,11 +24,14 @@ extern "C" {
 namespace hclib {
 //PEtoNodeMap will be used for tracing purpose when ENABLE_TRACE is defined
 #ifdef ENABLE_TRACE
+#include<papi.h>
+
 #ifndef USE_SHMEM
 #error "Trace generation can be used only when USE_SHMEM=1"
 #else
 #include "shmem.h"
 #endif
+
 FILE *get_trace_fptr(bool is_new, const char name[] = "") {
     static FILE *fptr = NULL;
     if (fptr == NULL || is_new) {
@@ -41,25 +45,203 @@ FILE *get_trace_fptr(bool is_new, const char name[] = "") {
     return fptr;
 }
 
+FILE *get_papi_trace_fptr(bool is_new, const char name[] = "") {
+    static FILE *fptr = NULL;
+    if (fptr == NULL || is_new) {
+        char fname[256];
+	if (name != NULL && name[0] != '\0')
+	  snprintf(fname, sizeof(fname), "PE%d_%s_PAPI.csv", shmem_my_pe(), name);
+	else
+	  snprintf(fname, sizeof(fname), "PE%d_PAPI.csv", shmem_my_pe());
+        fptr = fopen(fname, "w");
+    }
+    return fptr;
+}
+
 /*
   Library function to create a new file for trace output, e.g.:
     char name[32];
     sprintf(name, "phase%d", 3);
     hclib::new_file_for_selector_trace(name);
-    // Trace output is written to the file named "PE*_phase3_send.csv".
+    // Trace output is written to the file named "PE*_phase3_send.csv" and "PE*_phase3_PAPI.csv".
  */
 void new_file_for_selector_trace(char name[]) {
-  FILE *fptr = get_trace_fptr(true, name);
+  FILE *fptr1 = get_trace_fptr(true, name);
+  FILE *fptr2 = get_papi_trace_fptr(true, name);
+}
+
+double get_clock_time() {
+    struct timespec tv;
+    clock_gettime(CLOCK_REALTIME, &tv);
+    double stamp = (double)tv.tv_sec + (double)tv.tv_nsec / 1000000000L;
+    return stamp;
 }
 
 int *PEtoNodeMap;
 void trace_send(int64_t src, int64_t dst, size_t pkg_size) {
     FILE *fptr = get_trace_fptr(false);
-    struct timespec tv;
-    clock_gettime(CLOCK_REALTIME, &tv);
-    double stamp = (double)tv.tv_sec + (double)tv.tv_nsec / 1000000000L;
+    double stamp = get_clock_time();
     fprintf(fptr, "%d, %ld, %d, %ld, %ld, %lf\n", PEtoNodeMap[src], src, PEtoNodeMap[dst], dst, pkg_size, stamp);
 }
+
+/*
+  Future work: Allows user to specify the PAPI events to be measured.
+ */
+const char* papi_events[3] = {"PAPI_TOT_CYC", "PAPI_TOT_INS", "PAPI_LST_INS"};
+int papi_num_events = 3;
+long long papi_tmp_counts[3];
+
+int papi_eventset;
+int HCLIB_PAPI_Init() {
+    int retval;
+    //fprintf(stderr, "[HCLIB PAPI] Initializing PAPI\n");
+    retval = PAPI_library_init(PAPI_VER_CURRENT);
+    if (retval != PAPI_VER_CURRENT) {
+        fprintf(stderr,"Error initializing PAPI! %s\n",
+                PAPI_strerror(retval));
+        return 0;
+    }
+    papi_eventset = PAPI_NULL;
+
+    retval = PAPI_create_eventset(&papi_eventset);
+    if (retval != PAPI_OK) {
+        fprintf(stderr,"Error creating eventset! %s\n",
+                PAPI_strerror(retval));
+    }
+    for (int i = 0; i < papi_num_events; i++) {
+        //fprintf(stderr, "[HCLIB PAPI] adding %s \n", papi_events[i]);
+        retval = PAPI_add_named_event(papi_eventset, papi_events[i]);
+        if (retval != PAPI_OK) {
+            fprintf(stderr,"Error adding %s: %s\n",
+                    papi_events[i],
+                    PAPI_strerror(retval));
+        }
+    }
+    return 0;
+}
+
+void inline HCLIB_PAPI_Start() {
+    int retval;
+    PAPI_reset(papi_eventset);
+    retval = PAPI_start(papi_eventset);
+    if (retval != PAPI_OK) {
+        fprintf(stderr,"Error starting PAPI: %s\n",
+                PAPI_strerror(retval));
+    }
+}
+
+void inline HCLIB_PAPI_Stop(long long *counters, bool accum = true) {
+    int retval;
+    retval = PAPI_stop(papi_eventset, papi_tmp_counts);
+    if (retval != PAPI_OK) {
+        fprintf(stderr,"Error stopping:  %s\n",
+                PAPI_strerror(retval));
+    }
+    if (accum) {
+        for (int i = 0; i < papi_num_events; i++)
+            counters[i] += papi_tmp_counts[i];
+    } else {
+        for (int i = 0; i < papi_num_events; i++)
+            counters[i] = papi_tmp_counts[i];
+    }
+}
+
+void HCLIB_PAPI_Show(int64_t src, size_t pkg_size, int mbox_id, long long *counters, int num_sends) {
+    FILE *fp = get_papi_trace_fptr(false);
+    int64_t dst = shmem_my_pe();
+    int nd_s = PEtoNodeMap[src];
+    int nd_d = PEtoNodeMap[dst];
+    long long tot_ins = counters[1];
+    long long lst_ins = counters[2];
+    double stamp = get_clock_time();
+    fprintf(fp, "%d, %ld, %d, %ld, %ld, %d, %d, %lld, %lld, %lf\n",
+	    nd_s, src, nd_d, dst, pkg_size, mbox_id, num_sends, tot_ins, lst_ins, stamp);
+}
+
+class PapiCounter {
+ public:
+  int num_sends;
+  long long *papi_counters;
+
+  PapiCounter() {
+    num_sends = 0;
+    papi_counters = (long long *) calloc(papi_num_events, sizeof(long long));
+  }
+
+  void init() {
+    num_sends = 0;
+    for (int i = 0; i < papi_num_events; i++)
+      papi_counters[i] = 0;
+  }
+};
+
+// #define PAPI_TRACER_DEBUG1
+// #define PAPI_TRACER_DEBUG2
+class PapiTracer {
+  std::vector<PapiCounter> counters;
+  std::vector<int> reuse_idcs;
+  PapiCounter *curr;
+  int curr_idx;
+
+ public:
+  void init() {
+    counters.clear();
+    reuse_idcs.clear();
+    curr = NULL;
+    curr_idx = -1;
+#ifdef PAPI_TRACER_DEBUG1
+    printf("PapiTracer: PE%d init\n", shmem_my_pe());
+#endif
+    HCLIB_PAPI_Init();
+  }
+
+  void start() {
+    bool to_add = reuse_idcs.empty();
+    if (to_add) {
+      counters.push_back(PapiCounter());
+      curr_idx = counters.size() - 1;
+    } else {
+      curr_idx = reuse_idcs.back();
+      reuse_idcs.pop_back();
+      counters[curr_idx].init();
+    }
+    curr = &(counters[curr_idx]);
+#ifdef PAPI_TRACER_DEBUG2
+    const char *msg = to_add ? "added" : "reused";
+    printf("PapiTracer: PE%d start %d (counter %s)\n", shmem_my_pe(), curr_idx, msg);
+#endif
+    HCLIB_PAPI_Start();
+  }
+
+  int pause() {
+    HCLIB_PAPI_Stop(curr->papi_counters);
+#ifdef PAPI_TRACER_DEBUG2
+    printf("PapiTracer: PE%d pause %d\n", shmem_my_pe(), curr_idx);
+#endif
+    return curr_idx;
+  }
+
+  void resume(int idx) {
+    curr_idx = idx;
+    curr = &(counters[curr_idx]);
+    (curr->num_sends)++;
+#ifdef PAPI_TRACER_DEBUG2
+    printf("PapiTracer: PE%d resume %d\n", shmem_my_pe(), curr_idx);
+#endif
+    HCLIB_PAPI_Start();
+  }
+
+  void end_and_dump(int64_t src, size_t pkg_size, int mb_id) {
+    HCLIB_PAPI_Stop(curr->papi_counters);
+    HCLIB_PAPI_Show(src, pkg_size, mb_id, curr->papi_counters, curr->num_sends);
+#ifdef PAPI_TRACER_DEBUG2
+    printf("PapiTracer: PE%d end %d\n", shmem_my_pe(), curr_idx);
+#endif
+    reuse_idcs.push_back(curr_idx);
+    curr_idx = -1;
+    curr = NULL;
+  }
+};
 #endif
 
 #ifdef USE_LAMBDA
@@ -119,6 +301,10 @@ class Mailbox {
     hclib::promise_t<int> worker_loop_end;
     bool is_early_exit = false, is_done = false;
     Mailbox* dep_mb = nullptr;
+    int mb_id;
+#ifdef ENABLE_TRACE
+    PapiTracer *papi_tracer = NULL;
+#endif
 
   public:
 
@@ -159,7 +345,13 @@ class Mailbox {
         return dep_mb;
     }
 
-    void start() {
+#ifdef ENABLE_TRACE
+    void start(int mid, PapiTracer *ptrc) {
+      papi_tracer = ptrc;
+#else
+    void start(int mid) {
+#endif
+        mb_id = mid;
 #ifdef USE_LAMBDA
         conv = convey_new_elastic(ELASTIC_BUFFER_SIZE, SIZE_MAX, 0, NULL, convey_opt_PROGRESS);
 #else
@@ -278,7 +470,13 @@ class Mailbox {
               //while(!get_dep_mb()->get_buffer()->full() &&  convey_pull(conv, &pop, &from) == convey_OK) {
               while( convey_pull(conv, &pop, &from) == convey_OK) {
                   //hclib::async([=]() { process(pop, from); });
+#ifdef ENABLE_TRACE
+                  papi_tracer->start();
+#endif
                   process(pop, from);
+#ifdef ENABLE_TRACE
+                  papi_tracer->end_and_dump(from, sizeof(T), mb_id);
+#endif
               }
 #endif // USE_LAMBDA
 
@@ -345,7 +543,13 @@ class Mailbox {
               //while(!get_dep_mb()->get_buffer()->full() &&  convey_pull(conv, &pop, &from) == convey_OK) {
               while( convey_pull(conv, &pop, &from) == convey_OK) {
                   //hclib::async([=]() { process(pop, from); });
+#ifdef ENABLE_TRACE
+                  papi_tracer->start();
+#endif
                   process(pop, from);
+#ifdef ENABLE_TRACE
+                  papi_tracer->end_and_dump(from, sizeof(T), mb_id);
+#endif
               }
 #endif // USE_LAMBDA
 
@@ -387,6 +591,8 @@ class Selector {
             }
         }
     }
+
+  PapiTracer papi_tracer;
 #endif
 #ifndef YIELD_LOOP
     void start_worker_loop() {
@@ -440,17 +646,34 @@ class Selector {
     }
 
     void start() {
+#ifdef ENABLE_TRACE
+        papi_tracer.init();
+#endif
         for(int i=0; i<N; i++) {
             //mb[i].set_dep_mb(&mb[(i+1)%N]);
-            mb[i].start();
+#ifdef ENABLE_TRACE
+            mb[i].start(i, &papi_tracer);
+#else
+            mb[i].start(i);
+#endif
         }
         start_worker_loop();
+#ifdef ENABLE_TRACE
+        papi_tracer.start();
+#endif
     }
 
 #ifdef USE_LAMBDA
     template<typename L>
     bool send(int mb_id, int rank, L lambda) {
+#ifdef ENABLE_TRACE
+        int idx = papi_tracer.pause();
+        bool ret = mb[mb_id].send(rank, lambda);
+        papi_tracer.resume(idx);
+        return ret;
+#else
         return mb[mb_id].send(rank, lambda);
+#endif
     }
 
     template<typename L>
@@ -460,7 +683,14 @@ class Selector {
     }
 #else
     bool send(int mb_id, T pkt, int rank) {
+#ifdef ENABLE_TRACE
+        int idx = papi_tracer.pause();
+        bool ret = mb[mb_id].send(pkt, rank);
+        papi_tracer.resume(idx);
+        return ret;
+#else
         return mb[mb_id].send(pkt, rank);
+#endif
     }
 
     bool send(T pkt, int rank) {
@@ -470,6 +700,10 @@ class Selector {
 #endif // USE_LAMBDA
 
     void done(int mb_id) {
+#ifdef ENABLE_TRACE
+        if (mb_id == 0)
+            papi_tracer.end_and_dump(shmem_my_pe(), 0, -1);
+#endif
         mb[mb_id].done();
         hclib::async_await_at([=]() {
             num_work_loop_end++;
