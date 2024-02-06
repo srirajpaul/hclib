@@ -196,6 +196,7 @@ class PapiTracer {
   }
 
   void start() {
+    assert(curr_idx == -1);
     bool to_add = reuse_idcs.empty();
     if (to_add) {
       counters.push_back(PapiCounter());
@@ -215,14 +216,19 @@ class PapiTracer {
 
   int pause() {
     HCLIB_PAPI_Stop(curr->papi_counters);
+    assert(curr_idx >= 0);
 #ifdef PAPI_TRACER_DEBUG2
     printf("PapiTracer: PE%d pause %d\n", shmem_my_pe(), curr_idx);
 #endif
-    return curr_idx;
+    int paused = curr_idx;
+    curr_idx = -1;
+    curr = NULL;
+    return paused;
   }
 
-  void resume(int idx) {
-    curr_idx = idx;
+  void resume(int paused) {
+    assert(curr_idx == -1);
+    curr_idx = paused;
     curr = &(counters[curr_idx]);
     (curr->num_sends)++;
 #ifdef PAPI_TRACER_DEBUG2
@@ -233,6 +239,7 @@ class PapiTracer {
 
   void end_and_dump(int64_t src, size_t pkg_size, int mb_id) {
     HCLIB_PAPI_Stop(curr->papi_counters);
+    assert(curr_idx >= 0);
     HCLIB_PAPI_Show(src, pkg_size, mb_id, curr->papi_counters, curr->num_sends);
 #ifdef PAPI_TRACER_DEBUG2
     printf("PapiTracer: PE%d end %d\n", shmem_my_pe(), curr_idx);
@@ -690,6 +697,16 @@ class Selector {
         return ret;
 #else
         return mb[mb_id].send(pkt, rank);
+#endif
+    }
+
+    void yield() {
+#ifdef ENABLE_TRACE
+        int idx = papi_tracer.pause();
+        hclib::yield();
+        papi_tracer.resume(idx);
+#else
+        hclib::yield();
 #endif
     }
 
