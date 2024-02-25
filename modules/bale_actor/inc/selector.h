@@ -82,6 +82,7 @@ void trace_send(int64_t src, int64_t dst, size_t pkg_size) {
     FILE *fptr = get_trace_fptr(false);
     double stamp = get_clock_time();
     fprintf(fptr, "%d, %ld, %d, %ld, %ld, %lf\n", PEtoNodeMap[src], src, PEtoNodeMap[dst], dst, pkg_size, stamp);
+    fflush(fptr);
 }
 
 /*
@@ -156,6 +157,7 @@ void HCLIB_PAPI_Show(int64_t src, size_t pkg_size, int mbox_id, long long *count
     double stamp = get_clock_time();
     fprintf(fp, "%d, %ld, %d, %ld, %ld, %d, %d, %lld, %lld, %lf\n",
 	    nd_s, src, nd_d, dst, pkg_size, mbox_id, num_sends, tot_ins, lst_ins, stamp);
+    fflush(fp);
 }
 
 class PapiCounter {
