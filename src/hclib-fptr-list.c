@@ -40,11 +40,7 @@ void hclib_register_func(hclib_fptr_list_t **list, int index, void *fptr,
 
 void *hclib_get_func_for(hclib_fptr_list_t *list, int index) {
     assert(list);
-    if (index < list->capacity) {
-        return (list->fptrs)[index];
-    } else {
-        return NULL;
-    }
+    return (list->fptrs)[index];
 }
 
 int hclib_has_func_for(hclib_fptr_list_t *list, int index) {

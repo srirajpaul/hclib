@@ -25,11 +25,10 @@ AC_CANONICAL_HOST
 # Platform check
 AM_CONDITIONAL([OSX], [case $host_os in darwin*) true;; *) false;; esac])
 AM_CONDITIONAL([LINUX], [case $host_os in *linux*) true;; *) false;; esac])
-AM_CONDITIONAL([HCOS], [case $host_os in *hcos*) true;; *) false;; esac])
 AM_CONDITIONAL([X86], [case $host_cpu in i?86) true;; *) false;; esac])
 AM_CONDITIONAL([X86_64], [case $host_cpu in x86_64) true;; *) false;; esac])
 AM_CONDITIONAL([PPC64], [case $host_cpu in powerpc64le) true;; *) false;; esac])
-AM_CONDITIONAL([RISCV64], [case $host_cpu in riscv64) true;; honey64) true;; *) false;; esac])
+AM_CONDITIONAL([RISCV64], [case $host_cpu in riscv64) true;;   *) false;; esac])
 AC_MSG_NOTICE([Host detected as $host_os $host_cpu])
 
 CPPFLAGS=$CPPFLAGS_BACKUP
@@ -94,20 +93,6 @@ AS_IF([test "x$with_production" != xno],
 AM_CONDITIONAL(PRODUCTION_SETTINGS, test "x$with_production" != xno)
 ### End PRODUCTION settings
 
-### Disable support for arbitrary numbers of futures predicating a task
-AC_ARG_ENABLE(inline_futures,
-    AS_HELP_STRING([--enable-inline-futures],
-    [disable support for arbitary numbers of futures for tasks (Default is false)]),
-    [with_inline_futures=$enableval],
-    [with_inline_futures=no;])
-
-AS_IF([test "x$with_inline_futures" != xno],
-      [ AC_MSG_NOTICE([Enabled inline futures only]) ],
-      [ AC_MSG_NOTICE([Disabled inline futures only]) ])
-
-AM_CONDITIONAL(HC_INLINE_FUTURES_ONLY, test "x$with_inline_futures" != xno)
-### End runtime statistics
-
 ### C++11 features check
 _old_CXXFLAGS="${CXXFLAGS}"
 CXXFLAGS="${_old_CXXFLAGS} -std=c++11"
@@ -120,9 +105,6 @@ if test $ac_cv_cxx11_trivial_copy_check = yes; then
 fi
 CXXFLAGS="${_old_CXXFLAGS}"
 ### End C++11 features check
-
-AC_CHECK_HEADERS([sys/mman.h])
-AC_CHECK_HEADERS([aio.h])
 
 # Variable substitutions.
 AC_SUBST([ac_aux_dir])

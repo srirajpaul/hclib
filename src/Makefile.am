@@ -35,12 +35,6 @@ else
 PRODUCTION_SETTINGS_FLAGS = -DHC_ASSERTION_CHECK
 endif
 
-if HC_INLINE_FUTURES_ONLY
-HC_FLAGS_INLINE_FUTURES_ONLY = -DHCLIB_INLINE_FUTURES_ONLY
-else
-HC_FLAGS_INLINE_FUTURES_ONLY =
-endif
-
 # build the hclib library
 lib_LTLIBRARIES = libhclib.la
 
@@ -50,7 +44,7 @@ libhclib_la_LIBADD =
 
 AM_CXXFLAGS = $(HC_FLAGS_1) $(HC_FLAGS_2) $(HC_FLAGS_3) $(HC_FLAGS_4) \
 			  $(HC_FLAGS_STATS) $(HC_FLAGS_VERBOSE) $(PRODUCTION_SETTINGS_FLAGS) \
-			  $(HC_FLAGS_HWLOC) $(HC_FLAGS_INLINE_FUTURES_ONLY)
+			  $(HC_FLAGS_HWLOC)
 libhclib_la_SOURCES = hclib-runtime.c hclib-deque.c hclib-promise.c \
 					  hclib-timer.c hclib_cpp.cpp hclib.c hclib-tree.c hclib-locality-graph.c \
 					  hclib_module.c hclib-fptr-list.c hclib-mem.c hclib-instrument.c \
@@ -102,11 +96,6 @@ endif # LINUX
 endif # OSX
 else
 if RISCV64
-if HCOS
-libhclib_la_SOURCES += \
-fcontext/jump_riscv64_sysv_elf_gas.S \
-fcontext/make_riscv64_sysv_elf_gas.S
-else
 if LINUX
 libhclib_la_SOURCES += \
 fcontext/jump_riscv64_sysv_elf_gas.S \
@@ -114,7 +103,6 @@ fcontext/make_riscv64_sysv_elf_gas.S
 else
 $(error Unknown OS)
 endif # LINUX
-endif # HCOS
 else
 $(error Unknown architecture)
 endif # RISCV64

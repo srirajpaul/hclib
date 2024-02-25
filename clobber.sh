@@ -1,5 +1,7 @@
 #!/bin/sh
 
+rm install
+
 #
 # Cleanup the project 
 #

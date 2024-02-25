@@ -1,0 +1,10 @@
+
+A Scalable Actor-based Programming System for PGAS Runtimes
+----------------------------------------------------------------
+
+Also available at https://github.com/srirajpaul/hclib/blob/bale_actor/modules/bale_actor
+
+PGAS runtimes are well suited to irregular applications due to their efficient support for short, non-blocking one-sided messages. However, there are two major sources of overhead in PGAS runtimes that prevent them from achieving acceptable performance on large scale parallel systems.  First, despite the availability of APIs that support non-blocking operations for important special cases, many PGAS operations on remote locations are synchronous by default, which can lead to long-latency stalls.  Second, efficient inter-node communication requires careful aggregation and management of short messages.
+
+Create a new programming system for PGAS runtimes, in which all remote operations are asynchronous by default through the use of an actor-based programming system. In this approach, the programmer does not need to worry about complexities related to message aggregation and termination detection. Please check the 'benchmarks' directory for instructions to run the mini-applications.
+

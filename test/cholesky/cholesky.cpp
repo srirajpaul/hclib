@@ -158,9 +158,7 @@ void entrypoint(void *arg) {
 int main(int argc, char** argv) {
     argc_ptr = &argc;
     argv_ptr = argv;
-    char const *deps[] = { "system" };
-    hclib_launch(entrypoint, NULL, deps, 1);
-
+    hclib_launch(&argc, argv, entrypoint, NULL);
 	return 0;
 }
 

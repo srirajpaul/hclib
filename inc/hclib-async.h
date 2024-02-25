@@ -125,7 +125,7 @@ void lambda_wrapper(void *args) {
 template<typename Function, typename T1>
 inline hclib_task_t *initialize_task(Function lambda_caller, T1 *lambda_on_heap) {
     hclib_task_t *t = (hclib_task_t *)calloc(1, sizeof(*t));
-    assert(t && lambda_on_heap);
+    assert(t);
     async_arguments<Function, T1> *args =
         new async_arguments<Function, T1>(lambda_caller, lambda_on_heap);
     t->_fp = lambda_wrapper<Function, T1>;
@@ -232,19 +232,6 @@ inline void async_nb_await_at(T&& lambda, std::vector<hclib_future_t *> &&future
 }
 
 template <typename T>
-inline void async_nb_await_at(T&& lambda, std::vector<hclib_future_t *> *futures,
-        hclib_locale_t *locale) {
-    async_await_at_helper(lambda, futures ? futures->data() : nullptr,
-            futures ? futures->size() : 0, locale, 1);
-}
-
-template <typename T>
-inline void async_nb_await(T&& lambda, std::vector<hclib_future_t *> *futures) {
-    async_await_at_helper(lambda, futures ? futures->data() : nullptr,
-            futures ? futures->size() : 0, nullptr, 1);
-}
-
-template <typename T>
 inline void async_await(T&& lambda, hclib_future_t *future) {
 	MARK_OVH(current_ws()->id);
     typedef typename std::remove_reference<T>::type U;
@@ -300,12 +287,6 @@ inline void async_await(T&& lambda, std::vector<hclib_future_t *> &&futures) {
 }
 
 template <typename T>
-inline void async_await(T&& lambda, std::vector<hclib_future_t *> *futures) {
-    async_await_at_helper(lambda, futures ? futures->data() : NULL,
-            futures ? futures->size() : 0, nullptr, 0);
-}
-
-template <typename T>
 inline void async_await_at(T&& lambda, hclib_future_t *future,
         hclib_locale_t *locale) {
 	MARK_OVH(current_ws()->id);
@@ -353,6 +334,7 @@ inline void async_await_at(T&& lambda, std::vector<hclib_future_t *> &&futures,
  *
  * so we disable this code if we're compiling a CUDA file with nvcc.
  */
+#ifndef __CUDACC__
 template <typename T>
 auto async_future_await_at_helper(T&& lambda, hclib_future_t **futures,
         const int nfutures, hclib_locale_t *locale,
@@ -398,28 +380,6 @@ auto async_future(T&& lambda) -> hclib::future_t<decltype(lambda())>* {
 }
 
 template <typename T>
-auto async_nb_future(T&& lambda) -> hclib::future_t<decltype(lambda())>* {
-    typedef decltype(lambda()) R;
-
-    hclib::promise_t<R> *event = new hclib::promise_t<R>();
-    /*
-     * TODO creating this closure may be inefficient. While the capture list is
-     * precise, if the user-provided lambda is large then copying it by value
-     * will also take extra time.
-     */
-    auto wrapper = [event, lambda]() {
-        call_and_put_wrapper<T, R>::fn(lambda, event);
-    };
-    typedef decltype(wrapper) U;
-
-    hclib_task_t* task = initialize_task(call_lambda<U>, new U(wrapper));
-    task->non_blocking = 1;
-    spawn(task);
-    return event->get_future();
-}
-
-
-template <typename T>
 auto async_future_await(T&& lambda, hclib_future_t *future) ->
         hclib::future_t<decltype(lambda())>* {
     typedef decltype(lambda()) R;
@@ -440,43 +400,17 @@ auto async_future_await(T&& lambda, hclib_future_t *future) ->
     return event->get_future();
 }
 
-#ifndef __CUDACC__
 template <typename T>
 auto async_future_await(T&& lambda, std::vector<hclib_future_t *> &futures) ->
         hclib::future_t<decltype(lambda())>* {
-    return async_future_await_at_helper(lambda, futures.data(), futures.size(),
-            nullptr, 0);
+    return async_future_await_at_helper(lambda, futures.data(), futures.size(), nullptr, 0);
 }
 
 template <typename T>
 auto async_future_await(T&& lambda, std::vector<hclib_future_t *> &&futures) ->
         hclib::future_t<decltype(lambda())>* {
-    return async_future_await_at_helper(lambda, futures.data(), futures.size(),
-            nullptr, 0);
+    return async_future_await_at_helper(lambda, futures.data(), futures.size(), nullptr, 0);
 }
-
-template <typename T>
-auto async_nb_future_await(T&& lambda, hclib_future_t * future) ->
-        hclib::future_t<decltype(lambda())>* {
-    return async_future_await_at_helper(lambda, &future, 1, nullptr, 1);
-}
-
-template <typename T>
-auto async_nb_future_await(T&& lambda, std::vector<hclib_future_t *> &futures) ->
-        hclib::future_t<decltype(lambda())>* {
-    return async_future_await_at_helper(lambda, futures.data(), futures.size(),
-            nullptr, 1);
-}
-
-
-template <typename T>
-auto async_nb_future_await(T&& lambda, std::vector<hclib_future_t *> &&futures) ->
-        hclib::future_t<decltype(lambda())>* {
-    return async_future_await_at_helper(lambda, futures.data(), futures.size(),
-            nullptr, 1);
-}
-
-
 
 template <typename T>
 auto async_future_at_helper(T& lambda, hclib_locale_t *locale,

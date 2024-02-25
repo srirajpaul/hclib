@@ -1,0 +1,186 @@
+
+A Scalable Actor-based Programming System for PGAS Runtimes
+----------------------------------------------------------------
+
+Document also available at
+https://github.com/srirajpaul/hclib/blob/bale3_actor/modules/bale_actor/benchmarks/README
+
+The whole experiment consists of five phases, 0: prepare your system,
+1: Prepare dependencies, 2: building HClib library, 3: building the 
+benchmarks, 4: running the benchmarks, 5: processing the output of 
+step 4 to correspond to figures in the paper.
+Commands to be executed starts with '>>' marker. Please ignore this
+marker while copying the commands.
+
+Getting Started
+---------------
+
+0)  Please use bash shell. Before getting started, please make sure 
+    that the following packages are available:
+
+    apt-utils
+    autoconf
+    git
+    libtool
+    pkg-config
+    vim
+    gcc
+    g++
+    libmpich-dev
+    mpich
+    unzip
+   
+    Please use a C/C++ compiler that supports -std=c++14 and -std=c11.
+    
+    Here is an example command that installs all the dependencies 
+    an Ubuntu-based system:
+    >> sudo apt-get install apt-utils autoconf git libtool pkg-config vim gcc g++ libmpich-dev mpich unzip
+
+1)  Prepare dependencies (libfabric, SOS:OpenSHMEM, BUPC:UPC, bale:Conveyors)
+
+    A) Setup a working directory and install directory
+    >> mkdir work;    cd work;    export WORK_DIR=$PWD
+    >> mkdir install; cd install; export INSTALL_DIR=$PWD
+    >> cd $WORK_DIR
+
+    B) Install libfabric, SOS OpenSHMEM, BUPC. Please skip the
+    installation if OpenSHMEM and UPC is already installed,
+    instead set the CC,CXX and SRUN environment variables
+    
+    >> git clone https://github.com/ofiwg/libfabric.git
+    >> cd libfabric
+    >> git checkout tags/v1.10.0rc3 -b v1.10.0rc3
+    >> ./autogen.sh && ./configure --prefix=$INSTALL_DIR && make install
+
+    >> git clone https://github.com/Sandia-OpenSHMEM/SOS.git
+    >> cd SOS
+    >> git checkout tags/v1.4.5 -b v1.4.5
+    >> ./autogen.sh && ./configure --prefix=$INSTALL_DIR --with-ofi=$INSTALL_DIR --enable-pmi-simple && make install
+
+    # Installing UPC might take long time (hours)
+    >> sudo apt-get install wget curl python cmake
+    >> wget https://github.com/Intrepid/clang-upc/releases/download/clang-upc-3.9.1-1/clang-upc-all-3.9.1-1.tar.gz
+    >> tar -xvzf clang-upc-all-3.9.1-1.tar.gz
+    >> cd clang-upc-3.9.1-1
+    >> mkdir INSTALL build
+    >> cd build
+    >> cmake -DCMAKE_INSTALL_PREFIX=$PWD/../INSTALL -DCMAKE_BUILD_TYPE=Release -DLLVM_USE_LINKER=gold ../
+    >> make
+    >> make install
+    >> cd ../../
+    >> wget https://upc.lbl.gov/download/release/berkeley_upc-2020.4.0.tar.gz
+    >> tar -xvzf berkeley_upc-2020.4.0.tar.gz
+    >> cd berkeley_upc-2020.4.0
+    >> mkdir INSTALL build
+    >> cd build
+    >> ../configure --prefix=$PWD/../INSTALL CUPC2C_TRANS=$PWD/../../clang-upc-3.9.1-1/INSTALL/bin/clang-upc2c --with-multiconf=+dbg_cupc2c,+opt_cupc2c
+    >> #if it asks, then reconfigure with --enable-force-gettimeofday or --enable-force-posix-realtime
+    >> make install
+    >> export PATH=$PWD/../INSTALL/bin:$PATH
+    >> cd ../../
+
+    >> export CC=$INSTALL_DIR/bin/oshcc
+    >> export CXX=$INSTALL_DIR/bin/oshc++
+    >> export SRUN=$INSTALL_DIR/bin/oshrun
+
+    Cori at NERSC has cray-shmem and bupc installed. Please skip
+    step B and instead do the following steps:
+    >> module swap PrgEnv-intel PrgEnv-gnu; module load cray-shmem bupc
+    >> export CC=cc
+    >> export CXX=CC
+    >> export SRUN=srun
+
+    C) Install Conveyors library
+
+    >> git clone https://github.com/jdevinney/bale.git
+    >> cd bale/src/bale_classic
+    >> ./bootstrap.sh
+    >> ./make_bale -s -f -j
+    >> export BALE_INSTALL=$PWD/build_unknown
+
+2) HClib-Selector Installation
+
+    >> git clone https://github.com/srirajpaul/hclib.git
+    >> cd hclib
+    >> git checkout bale3_actor
+    >> ./install.sh
+    >> export HCLIB_ROOT=$PWD/hclib-install
+    >> cd modules/bale_actor; make
+    >> cd inc; unzip boost.zip
+    >> export HCLIB_WORKERS=1
+    >> export LD_LIBRARY_PATH=$INSTALL_DIR/lib:$BALE_INSTALL/lib:$HCLIB_ROOT/lib:$HCLIB_ROOT/../modules/bale_actor/lib
+    >> cd $WORK_DIR
+
+0-2) Docker Container
+    There is a Dockerfile[1] that includes all dependencies
+    except UPC and sets up the environment.
+    Use installation instructions from above if UPC is needed.
+    [1] https://github.com/srirajpaul/hclib/blob/bale_actor/modules/bale_actor/benchmarks/Dockerfile
+    
+    Download the Dockerfile to a work directory and build it as:
+    >> docker build -t hclib_selector:1 .
+    
+    Starting for first time:
+    >> docker run -w /root -it hclib_selector:1 /bin/bash
+    
+    Running from second time onwards:
+    >> docker start <container-id>
+    >> docker attach <container-id>
+    
+    The container-id is obtained with 'docker container ls -a'
+
+Step-by-Step Instructions
+------------------------
+
+3) Build Selector benchmarks:
+   (please make sure to set the environment variables in step 0-2)
+
+    >> cd $HCLIB_ROOT/../modules/bale_actor/benchmarks
+    >> make clean
+    >> make
+    >> make upc  # in case UPC is avalilable
+
+4) Run Experiments
+   
+    >> /bin/bash run.sh -h
+
+    This shows all the options as follows
+             -s <s|m|l>  default is s i.e. use small input
+             -n <1..inf> default is 5 i.e. run each experiment 5 times
+             -r <1..inf> default is 2 i.e. two ranks per node
+             -t <1..inf> default is 2 i.e. start number of nodes is 2
+             -m <1..inf> default is 4 i.e. max number of nodes is 4
+             -u <0|1> default is 0 i.e do not run UPC version
+             -h show options
+
+    >> /bin/bash run.sh -s l -n 5 -r 32 -t 2 -m 64 |& tee out.log
+
+    Explanation:
+        -s l : use large inputs. use m for medium and s for small
+        -n 5 : repeat each experiment 5 times to take the average
+        -r 32: each node contains 32 ranks
+        -t 2 : start experiments with 2 nodes and then double
+        -m 64: use a maximum of 64 nodes starting from 2 nodes
+
+        The experiment starts with 2 nodes and keeps on doubling until
+        64 nodes are reached, i.e. it runs 2,4,8,16,32 and 64 nodes.
+        Since each node has 32 ranks, the 2 node experiment has
+        64 ranks(2X32) and the 64 node experiment has 2048 ranks(64X32).
+        'tee' prints the output on screen and also to a file 'out.log'
+        which is used in step 5 to view results.
+        The configuration '-s l -n 5 -r 32 -t $N -m $N -u 1' is used in Cori
+        to get the results presented in the paper, where N=2,4,..,64.
+        The 'cori.slurm' file is a sample slurm script that does the same,
+        and the cori configuration is available in misc/cori_env.txt
+        We use the time reported by the kernel. Benchmarks perform
+        additional activities such as i/p generation and o/p validation.
+
+5) View Results
+
+    >> /bin/bash result.sh -n 5 -r 32 -t 2 -m 64 -i out.log
+
+    Explanation:
+        Use the same parameters used for the experiments in step 4 and
+        also, provide the output of step 4 as input using -i flag
+        It prints a table corresponding to the results in Figure 3 of the paper.
+

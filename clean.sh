@@ -1,3 +1,12 @@
 #!/bin/bash
 
-rm -rf hclib-install/ build/ modules/system/build/
+cd modules/system
+make clean
+cd ../../
+rm -f Makefile.in
+rm -f src/Makefile.in
+rm -f aclocal.m4
+rm -rf autom4te.cache
+rm -rf compileTree
+rm -f configure
+rm -rf hclib-install

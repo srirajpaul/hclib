@@ -586,8 +586,10 @@ void generate_locality_info(int *nworkers_out,
     int nworkers;
     if (nworkers_str) {
         nworkers = atoi(nworkers_str);
+#if 0
         fprintf(stderr, "WARNING: HCLIB_WORKERS provided, creating locale "
                 "graph based on %u workers\n", nworkers);
+#endif        
     } else {
         nworkers = sysconf(_SC_NPROCESSORS_ONLN);
         fprintf(stderr, "WARNING: HCLIB_WORKERS not provided, running with "
@@ -1138,18 +1140,11 @@ hclib_locale_t *hclib_get_closest_locale_of_types(hclib_locale_t *locale,
     const int n_locales = hc_context->graph->n_locales;
 
     int visiting_index = 0;
+    int to_visit_index = 0;
     int *to_visit = (int *)malloc(sizeof(int) * n_locales);
-    to_visit[0] = locale - hc_context->graph->locales;
-    assert(to_visit[0] < n_locales);
-    int to_visit_index = 1;
-
-    while(visiting_index < n_locales) {
-        hclib_locale_t *curr = hc_context->graph->locales +
-            to_visit[visiting_index++];
-        if (contains(curr->type, locale_types, n_locale_types)) {
-            return curr;
-        }
-
+    hclib_locale_t *curr = locale;
+    while (!contains(curr->type, locale_types, n_locale_types) &&
+            visiting_index <= n_locales) {
         const int id = curr->id;
         int i;
         for (i = 0; i < n_locales; i++) {
@@ -1158,9 +1153,12 @@ hclib_locale_t *hclib_get_closest_locale_of_types(hclib_locale_t *locale,
                 to_visit[to_visit_index++] = i;
             }
         }
+
+        curr = hc_context->graph->locales + to_visit[visiting_index++];
     }
 
-    return NULL; // none of that type found
+    if (visiting_index > n_locales) return NULL; // none of that type found
+    else return curr;
 }
 
 hclib_locale_t *hclib_get_closest_locale_of_type(hclib_locale_t *locale,

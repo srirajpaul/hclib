@@ -1,0 +1,20 @@
+{
+    "nworkers": 2,
+    "declarations": [
+        "sysmem",
+        "L1_0", "L1_1", 
+        "Interconnect"
+    ],
+    "reachability": [
+        ["sysmem", "Interconnect"],
+        ["sysmem", "L1_0"], ["sysmem", "L1_1"]
+    ],
+    "pop_paths": {
+        "default": ["L1_$(id)", "sysmem"],
+        1: ["Interconnect"]
+    },
+    "steal_paths": {
+        "default": ["L1_$(id)", "sysmem"],
+        1: ["Interconnect"]
+    }
+}

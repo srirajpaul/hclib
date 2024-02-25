@@ -54,11 +54,10 @@ cudaStream_t hclib::get_stream(hclib_locale_t *locale) {
     assert(locale->type == gpu_locale_id);
 
     gpu_locale_metadata *metadata = (gpu_locale_metadata *)locale->metadata;
-    assert(metadata);
 
     const int stream_index = hc_atomic_inc(&(metadata->stream_iter));
 
-    return metadata->streams[stream_index % NUM_STREAMS_PER_LOCALE];
+    return metadata->streams[stream_index];
 }
 
 int hclib::get_cuda_device_id(hclib_locale_t *locale) {
@@ -95,7 +94,6 @@ static void memset_func(void *ptr, int val, size_t nbytes,
 
     assert(locale->type == gpu_locale_id);
     CHECK_CUDA(cudaMemset(ptr, val, nbytes));
-    CHECK_CUDA(cudaDeviceSynchronize());
 
     CUDA_END_OP(MEMSET);
 }
@@ -201,11 +199,7 @@ int hclib::get_num_gpu_locales() {
 bool hclib::test_cuda_completion(void *generic_op) {
     pending_cuda_op *op = (pending_cuda_op *)generic_op;
     cudaError_t err = cudaEventQuery(op->event);
-    if (err != cudaSuccess && err != cudaErrorNotReady) {
-        fprintf(stderr, "test_cuda_completion: ERROR %s\n",
-                cudaGetErrorString(err));
-        abort();
-    }
+    assert(err == cudaSuccess || err == cudaErrorNotReady);
     return (err == cudaSuccess);
 }
 
