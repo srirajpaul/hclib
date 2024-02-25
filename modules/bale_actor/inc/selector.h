@@ -88,7 +88,8 @@ void trace_send(int64_t src, int64_t dst, size_t pkg_size) {
 /*
   Future work: Allows user to specify the PAPI events to be measured.
  */
-char* papi_events[3] = {"PAPI_TOT_CYC", "PAPI_TOT_INS", "PAPI_LST_INS"};
+
+const char* papi_events[3] = {"PAPI_TOT_CYC", "PAPI_TOT_INS", "PAPI_LST_INS"};
 int papi_num_events = 3;
 long long papi_tmp_counts[3];
 
