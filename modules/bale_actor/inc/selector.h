@@ -22,6 +22,25 @@ extern "C" {
 #endif
 
 namespace hclib {
+#ifdef ENABLE_TCOMM_PROFILING
+#ifdef ENABLE_TRACE
+#error ENABLE_TRACE cannot be used with ENABLE_TCOMM_PROFILING so far
+#endif
+static inline uint64_t _rdtsc(void) {
+    unsigned a, d;
+    asm volatile("rdtsc" : "=a" (a), "=d" (d) : : "%rbx", "%rcx");
+    return ((uint64_t) a) | (((uint64_t) d) << 32);
+}
+
+static inline uint64_t start_tsc() {
+    return _rdtsc();
+}
+
+static inline uint64_t stop_tsc() {
+    return _rdtsc();
+}
+
+#endif
 //PEtoNodeMap will be used for tracing purpose when ENABLE_TRACE is defined
 #ifdef ENABLE_TRACE
 #include<papi.h>
@@ -307,6 +326,10 @@ class Mailbox {
 #ifdef ENABLE_TRACE
     PapiTracer *papi_tracer = NULL;
 #endif
+#ifdef ENABLE_TCOMM_PROFILING
+    uint64_t *t_process;
+    uint64_t *recv_count;
+#endif
 
   public:
 
@@ -350,6 +373,10 @@ class Mailbox {
 #ifdef ENABLE_TRACE
     void start(int mid, PapiTracer *ptrc) {
       papi_tracer = ptrc;
+#elif defined (ENABLE_TCOMM_PROFILING)
+    void start(int mid, uint64_t *_t_process, uint64_t *_recv_count) {
+      t_process = _t_process;
+      recv_count = _recv_count;
 #else
     void start(int mid) {
 #endif
@@ -475,7 +502,14 @@ class Mailbox {
 #ifdef ENABLE_TRACE
                   papi_tracer->start();
 #endif
+#ifdef ENABLE_TCOMM_PROFILING
+                  uint64_t t1 = start_tsc();
+#endif
                   process(pop, from);
+#ifdef ENABLE_TCOMM_PROFILING
+                  *t_process = *t_process + (stop_tsc() - t1);
+                  *recv_count = *recv_count + 1;
+#endif
 #ifdef ENABLE_TRACE
                   papi_tracer->end_and_dump(from, sizeof(T), mb_id);
 #endif
@@ -596,6 +630,19 @@ class Selector {
 
   PapiTracer papi_tracer;
 #endif
+#ifdef ENABLE_TCOMM_PROFILING
+    uint64_t t_start = 0;              // the time at which the start API is called
+    uint64_t t_inside_finish = 0;      // the time between start and done
+    uint64_t t_outside_finish = 0;     // the time between start and the end of finish
+    uint64_t t_send = 0;               // the cumulative time to do send (includes message handler)
+    uint64_t t_send_in_process = 0;    // the cumulative time to do send  (includes message handler)
+    uint64_t t_done = 0;               // the time at which the done API is called
+    uint64_t t_wait = 0;               // the time between done and the end of finish
+    uint64_t t_process = 0;            // the cumulative time to do process
+    uint64_t send_count = 0;           // # of sends
+    uint64_t send_in_process_count = 0;// # of sends  (in process)
+    uint64_t recv_count = 0;           // # of recvs
+#endif
 #ifndef YIELD_LOOP
     void start_worker_loop() {
         for(int i=0;i<N;i++) {
@@ -651,10 +698,15 @@ class Selector {
 #ifdef ENABLE_TRACE
         papi_tracer.init();
 #endif
+#ifdef ENABLE_TCOMM_PROFILING
+        t_start = start_tsc();
+#endif
         for(int i=0; i<N; i++) {
             //mb[i].set_dep_mb(&mb[(i+1)%N]);
 #ifdef ENABLE_TRACE
             mb[i].start(i, &papi_tracer);
+#elif defined(ENABLE_TCOMM_PROFILING)
+            mb[i].start(i, &t_process, &recv_count);
 #else
             mb[i].start(i);
 #endif
@@ -673,6 +725,19 @@ class Selector {
         bool ret = mb[mb_id].send(rank, lambda);
         papi_tracer.resume(idx);
         return ret;
+#elif defined(ENABLE_TCOMM_PROFILING)
+        uint64_t t1;
+        t1 = start_tsc();
+        bool ret = mb[mb_id].send(rank, lambda);
+        if (mb_id == 0) {
+            t_send += stop_tsc() - t1;
+            send_count++;
+        } else {
+            // this assumes send to MBx happens in a handler, where x is not 0.
+            t_send_in_process += stop_tsc() - t1;
+            send_in_process_count++;
+        }
+        return ret;
 #else
         return mb[mb_id].send(rank, lambda);
 #endif
@@ -690,6 +755,19 @@ class Selector {
         bool ret = mb[mb_id].send(pkt, rank);
         papi_tracer.resume(idx);
         return ret;
+#elif defined(ENABLE_TCOMM_PROFILING)
+        uint64_t t1;
+        t1 = start_tsc();
+        bool ret = mb[mb_id].send(pkt, rank);
+        if (mb_id == 0) {
+            t_send += stop_tsc() - t1;
+            send_count++;
+        } else {
+            // this assumes send to MBx happens in a handler, where x is not 0.
+            t_send_in_process += stop_tsc() - t1;
+            send_in_process_count++;
+        }
+        return ret;
 #else
         return mb[mb_id].send(pkt, rank);
 #endif
@@ -706,6 +784,14 @@ class Selector {
         if (mb_id == 0)
             papi_tracer.end_and_dump(shmem_my_pe(), 0, -1);
 #endif
+#ifdef ENABLE_TCOMM_PROFILING
+        if (mb_id == 0) {
+            // this assumes done for MB0 is called from the main part
+            // (should be true in the original runtime impl)
+            t_inside_finish = stop_tsc() - t_start;
+            t_done = stop_tsc();
+        }
+#endif
         mb[mb_id].done();
         hclib::async_await_at([=]() {
             num_work_loop_end++;
@@ -715,6 +801,11 @@ class Selector {
             else {
                 assert(num_work_loop_end == N);
                 end_prom.put(1);
+#ifdef ENABLE_TCOMM_PROFILING
+                // end of the last MB
+                t_outside_finish = stop_tsc() - t_start;
+                t_wait = stop_tsc() - t_done;
+#endif
             }
         }, mb[mb_id].get_worker_loop_finish(), nic);
     }
@@ -727,6 +818,31 @@ class Selector {
     hclib::future_t<int>* get_future() {
         return end_prom.get_future();
     }
+#ifdef ENABLE_TCOMM_PROFILING
+  void print_profiling(char *prefix="") {
+      printf("%s [PE%d] T_inside_finish (start - done): %" PRIu64 " cycles\n", prefix, shmem_my_pe(), t_inside_finish);
+      printf("%s [PE%d] T_wait (done - finish): %" PRIu64 " cycles\n", prefix, shmem_my_pe(), t_wait);
+      printf("%s [PE%d] T_outside_finish (start - finish): %" PRIu64 " cycles\n", prefix, shmem_my_pe(), t_outside_finish);
+      printf("%s [PE%d] T_sends (count=%d): %" PRIu64 " cycles\n", prefix, shmem_my_pe(), send_count, t_send);
+      printf("%s [PE%d] T_send_in_process (count=%d): %" PRIu64 " cycles\n", prefix, shmem_my_pe(), send_in_process_count, t_send_in_process);
+      printf("%s [PE%d] T_process (count=%d): %" PRIu64 " cycles\n", prefix, shmem_my_pe(), recv_count, t_process);
+
+      uint64_t T_MAIN = t_inside_finish - t_send;
+      uint64_t T_PROC = t_process - t_send_in_process;
+      uint64_t T_WAIT = t_wait;
+      uint64_t T_COMM = (t_send + T_WAIT) - T_PROC;
+      uint64_t T_TOTAL = (T_MAIN+T_COMM+T_PROC);
+
+      // Sanity Check
+      if (((t_outside_finish >= T_TOTAL) && (t_outside_finish - T_TOTAL > 0.01 * t_outside_finish))
+          || ((t_outside_finish < T_TOTAL) && (T_TOTAL - t_outside_finish > 0.01 * t_outside_finish))) {
+          printf("%s [PE%d] T_TOTAL would be much bigger/smaller than T_finish\n", prefix, shmem_my_pe());
+      }
+
+      printf("%s [PE%d] TCOMM_PROFILING (T_MAIN, T_COMM, T_PROC, T_TOTAL), %" PRIu64 ", %" PRIu64 ", %" PRIu64 ", %" PRIu64 "\n", prefix, shmem_my_pe(), T_MAIN, T_COMM, T_PROC, T_TOTAL);
+      printf("%s [PE%d] TCOMM_PROFILING (T_MAIN/T_TOTAL, T_COMM/T_TOTAL, T_PROC/T_TOTAL), %lf, %lf, %lf\n", prefix, shmem_my_pe(), (double)T_MAIN/(double)T_TOTAL, (double)T_COMM/(double)T_TOTAL, (double)T_PROC/(double)T_TOTAL);
+  }
+#endif
 };
 
 template<typename T=int64_t>
