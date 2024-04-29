@@ -104,7 +104,23 @@ else
 $(error Unknown OS)
 endif # LINUX
 else
+if AARCH64
+if OSX
+libhclib_la_SOURCES += \
+fcontext/jump_arm64_aapcs_macho_gas.S \
+fcontext/make_arm64_aapcs_macho_gas.S
+else
+if LINUX
+libhclib_la_SOURCES += \
+fcontext/jump_arm64_aapcs_elf_gas.S \
+fcontext/make_arm64_aapcs_elf_gas.S
+else
+$(error Unknown OS)
+endif # LINUX
+endif # OSX
+else
 $(error Unknown architecture)
+endif # ARM64
 endif # RISCV64
 endif # PPC64
 endif # X86_64
