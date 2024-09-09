@@ -4,7 +4,8 @@ include $(HCLIB_ROOT)/../modules/bale_actor/inc/hclib_bale_actor.post.mak
 
 SRUN ?= oshrun
 
-TARGETS=test_conveyor test_selector test_selector3 \
+TARGETS=dependency_cyclic_selector dependency_selector factorial_selector \
+	test_conveyor test_selector test_selector3 \
         histo_agi histo_conveyor histo_selector histo_selector_lambda histo_selector_lambda2  histo_agi_selector\
         ig_agi ig_conveyor ig_selector ig_selector_lambda ig_selector_lambda2 ig_agi_selector\
         toposort_agi toposort_conveyor toposort_selector toposort_selector_lambda \
