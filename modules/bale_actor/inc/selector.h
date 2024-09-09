@@ -22,6 +22,10 @@ extern "C" {
 #endif
 
 namespace hclib {
+
+#include "shmem.h"
+int *GLOBAL_DONE;
+
 #ifdef ENABLE_TCOMM_PROFILING
 #ifdef ENABLE_TRACE
 #error ENABLE_TRACE cannot be used with ENABLE_TCOMM_PROFILING so far
@@ -503,12 +507,12 @@ class Mailbox {
 
           //Assumes once 'advance' is called with done=true, the conveyor
           //enters endgame and subsequent value of 'done' is ignored
-          while(convey_advance(conv, bp.rank == DONE_MARK)) {
+          while(convey_advance(conv, bp.rank == DONE_MARK || *GLOBAL_DONE == -1)) {
               int i;
               size_t buff_size = buff->size();
               for(i=0;i<buff_size; i++){
                   bp = buff->operator[](i);
-                  if( bp.rank == DONE_MARK) break;
+                  if( bp.rank == DONE_MARK || *GLOBAL_DONE == -1 ) break;
 #ifdef USE_LAMBDA
                   //printf("size %d\n", bp.lambda_pkt->get_bytes());
                   if( !convey_epush(conv, bp.lambda_pkt->get_bytes(), bp.lambda_pkt, bp.rank)) break;
@@ -586,12 +590,12 @@ class Mailbox {
 
           //Assumes once 'advance' is called with done=true, the conveyor
           //enters endgame and subsequent value of 'done' is ignored
-          while(convey_advance(conv, bp.rank == DONE_MARK)) {
+          while(convey_advance(conv, bp.rank == DONE_MARK || *GLOBAL_DONE == -1)) {
               int i;
               size_t buff_size = buff->size();
               for(i=0;i<buff_size; i++){
                   bp = buff->operator[](i);
-                  if( bp.rank == DONE_MARK) break;
+                  if( bp.rank == DONE_MARK || *GLOBAL_DONE == -1 ) break;
 #ifdef USE_LAMBDA
                   //printf("size %d\n", bp.lambda_pkt->get_bytes());
                   if( !convey_epush(conv, bp.lambda_pkt->get_bytes(), bp.lambda_pkt, bp.rank)) break;
@@ -645,6 +649,29 @@ template<int N, typename T=int64_t, int SIZE=BUFFER_SIZE>
 class Selector {
 
   private:
+    void initialize_global_done() {
+        GLOBAL_DONE = (int*)shmem_malloc(sizeof(int));
+        if(GLOBAL_DONE==NULL){
+            std::cout << "ERROR: Unable to allocate space for GLOBAL_DONE pointer\n" << std::endl;
+            abort();
+        }
+        if(shmem_my_pe()==0){
+            for (int i = 0; i < shmem_n_pes(); i++) {
+                shmem_int_p(GLOBAL_DONE, 0, i);
+            }
+        }
+
+        shmem_barrier_all();
+
+        // if(shmem_my_pe()==0){
+        //     printf("Global Done initialized\n");
+        //     for (int i = 0; i < shmem_n_pes(); i++) {
+        //         int value = shmem_int_g(GLOBAL_DONE, i);
+        //         printf("PE: %d, GLOBAL_DONE: %d\n", i, value);
+        //     }
+        // }
+    }
+
 #ifdef ENABLE_TRACE
     void createPEtoNodeMap() {
         PEtoNodeMap = (int*)shmem_malloc(shmem_n_pes()*sizeof(int));
@@ -725,6 +752,7 @@ class Selector {
         #ifdef ENABLE_TRACE
         createPEtoNodeMap();
         #endif
+        initialize_global_done();
         if(is_start) {
             start();
         }
@@ -770,7 +798,7 @@ class Selector {
 
         for (int const& successor_mb_id : successors_mb) {
             mb[successor_mb_id].inc_predecessor_mbs_count();
-            
+
             if (successor_mb_id == mb_id) {
                 mb[mb_id].set_is_cyclic(true);
             } else {
@@ -840,6 +868,14 @@ class Selector {
         return send(0, pkt, rank);
     }
 #endif // USE_LAMBDA
+
+    
+    void initiate_global_done() {
+        for (int pe_id = 0; pe_id < shmem_n_pes(); pe_id++) {
+            // printf("Invoked Global Done on PE: %d\n", pe_id);
+            shmem_int_p(GLOBAL_DONE, -1, pe_id);
+        }
+    }
 
     void done(int mb_id) {
 #ifdef ENABLE_TRACE
