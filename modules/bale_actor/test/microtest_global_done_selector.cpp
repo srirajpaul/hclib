@@ -67,7 +67,7 @@ class ClientActor: public hclib::Selector<2, packet> {
     void process_response(packet pkt, int sender_rank) {
         std::cout<<"Client recieved response from PE"<<sender_rank<<std::endl;
         std::cout<<"...should terminate here..."<<std::endl;
-        initiate_global_done();
+        global_done();
     }
     public:
     void start() {
