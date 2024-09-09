@@ -2,8 +2,8 @@
 #ifndef SELECTOR_H
 #define SELECTOR_H
 
-#include<iostream>
-#include<vector>
+#include <iostream>
+#include <vector>
 #include "safe_buffer.h"
 #include "hclib_bale_actor.h"
 extern "C" {
@@ -323,6 +323,10 @@ class Mailbox {
     bool is_early_exit = false, is_done = false;
     Mailbox* dep_mb = nullptr;
     int mb_id;
+    std::vector<int> dep_mbs;
+    int predecessor_mbs_count = 0;
+    bool is_cyclic = false;
+    bool done_called = false;
 #ifdef ENABLE_TRACE
     PapiTracer *papi_tracer = NULL;
 #endif
@@ -368,6 +372,44 @@ class Mailbox {
 
     Mailbox* get_dep_mb() {
         return dep_mb;
+    }
+
+    void set_is_cyclic(bool val) {
+        is_cyclic = val;
+    }
+
+    bool get_is_cyclic() {
+        return is_cyclic;
+    }
+
+    void set_done_called(bool val) {
+        done_called = val;
+    }
+
+    bool get_done_called() {
+        return done_called;
+    }
+
+    void add_dep_mbs(std::vector<int> successor_mbs) {
+        for (int64_t const& successor_mb_id : successor_mbs) {
+            dep_mbs.push_back(successor_mb_id);
+        }
+    }
+
+    std::vector<int> get_dep_mbs() {
+        return dep_mbs;
+    }
+
+    int64_t get_predecessor_mbs_count() {
+        return predecessor_mbs_count;
+    }
+
+    void inc_predecessor_mbs_count() {
+        predecessor_mbs_count++;
+    }
+
+    void dec_predecessor_mbs_count() {
+        predecessor_mbs_count--;
     }
 
 #ifdef ENABLE_TRACE
@@ -712,9 +754,29 @@ class Selector {
 #endif
         }
         start_worker_loop();
+
+        // check if mailbox has cyclic dependency
+        for(int mb_id = 0; mb_id < N; mb_id++) {
+            check_cyclic(mb_id);
+        }
+
 #ifdef ENABLE_TRACE
         papi_tracer.start();
 #endif
+    }
+
+    void check_cyclic(int mb_id) {
+        std::vector<int> successors_mb = mb[mb_id].get_dep_mbs();
+
+        for (int const& successor_mb_id : successors_mb) {
+            mb[successor_mb_id].inc_predecessor_mbs_count();
+            
+            if (successor_mb_id == mb_id) {
+                mb[mb_id].set_is_cyclic(true);
+            } else {
+                check_cyclic(successor_mb_id);  // recursively check successors
+            }
+        }
     }
 
 #ifdef USE_LAMBDA
@@ -808,6 +870,35 @@ class Selector {
 #endif
             }
         }, mb[mb_id].get_worker_loop_finish(), nic);
+    }
+
+    void done_extended(int mb_id) {
+        bool mb_cyclic = mb[mb_id].get_is_cyclic();
+        bool mb_done_called;
+        if (mb_cyclic) mb_done_called = mb[mb_id].get_done_called();
+
+        // only call done on acyclic mb or cyclic mb that has not already received done(mb)
+        if ((!mb_cyclic) || (mb_cyclic && !mb_done_called)) {
+            mb[mb_id].done();
+            if (mb_cyclic) mb[mb_id].set_done_called(true);
+            hclib::async_await_at([=]() {
+                num_work_loop_end++;
+
+                std::vector<int> successor_mbs = mb[mb_id].get_dep_mbs();
+                for (int const& successor_mb_id : successor_mbs) {
+                    int num_predecessors = mb[successor_mb_id].get_predecessor_mbs_count();
+                    if (num_predecessors == 1) {
+                        done_extended(successor_mb_id);
+                    } else {
+                        mb[successor_mb_id].dec_predecessor_mbs_count();
+                    }
+                }
+                
+                if (num_work_loop_end == N) {
+                    end_prom.put(1);
+                }
+            }, mb[mb_id].get_worker_loop_finish(), nic);
+        }
     }
 
     void done() {
