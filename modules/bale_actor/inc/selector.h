@@ -25,6 +25,7 @@ namespace hclib {
 
 #include "shmem.h"
 int *GLOBAL_DONE;
+int *LOCAL_DONE;
 
 #ifdef ENABLE_TCOMM_PROFILING
 #ifdef ENABLE_TRACE
@@ -649,27 +650,36 @@ template<int N, typename T=int64_t, int SIZE=BUFFER_SIZE>
 class Selector {
 
   private:
-    void initialize_global_done() {
+    void initialize_local_global_done() {
         GLOBAL_DONE = (int*)shmem_malloc(sizeof(int));
+        LOCAL_DONE = (int*)shmem_malloc(sizeof(int));
+
         if(GLOBAL_DONE==NULL){
             std::cout << "ERROR: Unable to allocate space for GLOBAL_DONE pointer\n" << std::endl;
             abort();
         }
+        if(LOCAL_DONE==NULL){
+            std::cout << "ERROR: Unable to allocate space for LOCAL_DONE pointer\n" << std::endl;
+            abort();
+        }
+
         if(shmem_my_pe()==0){
             for (int i = 0; i < shmem_n_pes(); i++) {
                 shmem_int_p(GLOBAL_DONE, 0, i);
+                shmem_int_p(LOCAL_DONE, 0, i);
             }
         }
 
         shmem_barrier_all();
 
-        // if(shmem_my_pe()==0){
-        //     printf("Global Done initialized\n");
-        //     for (int i = 0; i < shmem_n_pes(); i++) {
-        //         int value = shmem_int_g(GLOBAL_DONE, i);
-        //         printf("PE: %d, GLOBAL_DONE: %d\n", i, value);
-        //     }
-        // }
+        if(shmem_my_pe()==0){
+            printf("Global Done initialized\n");
+            for (int i = 0; i < shmem_n_pes(); i++) {
+                int value_global_done = shmem_int_g(GLOBAL_DONE, i);
+                int value_local_done = shmem_int_g(LOCAL_DONE, i);
+                printf("PE: %d, GLOBAL_DONE: %d, LOCAL_DONE: %d\n", i, value_global_done, value_local_done);
+            }
+        }
     }
 
 #ifdef ENABLE_TRACE
@@ -752,7 +762,7 @@ class Selector {
         #ifdef ENABLE_TRACE
         createPEtoNodeMap();
         #endif
-        initialize_global_done();
+        initialize_local_global_done();
         if(is_start) {
             start();
         }
@@ -869,8 +879,28 @@ class Selector {
     }
 #endif // USE_LAMBDA
 
-    
-    void initiate_global_done() {
+    void initiate_global_done() { // signals current PE termination
+        // need extra layer with LOCAL_DONE because some apps require mailboxes to send messages
+        //  within the "request" that they are serving, so this keeps the mailbox active to do that
+
+        shmem_int_p(LOCAL_DONE, 1, shmem_my_pe()); 
+
+        int global_done_flag = 0;
+        int local_done_value;
+
+        // fetch LOCAL_DONE on all PEs
+        for (int pe_id = 0; pe_id < shmem_n_pes(); pe_id++) {
+            local_done_value = shmem_int_g(LOCAL_DONE, pe_id);
+            global_done_flag += local_done_value;
+        }
+
+        // if all LOCAL_DONE == shmem_n_pes then can (safely) invoke global termination
+        if ( global_done_flag == (1 * shmem_n_pes()) ) {
+            global_done();
+        }
+    }
+
+    void global_done() { // invokes global termination on all PEs
         for (int pe_id = 0; pe_id < shmem_n_pes(); pe_id++) {
             // printf("Invoked Global Done on PE: %d\n", pe_id);
             shmem_int_p(GLOBAL_DONE, -1, pe_id);
