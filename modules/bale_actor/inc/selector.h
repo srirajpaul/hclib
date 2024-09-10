@@ -672,14 +672,14 @@ class Selector {
 
         shmem_barrier_all();
 
-        if(shmem_my_pe()==0){
-            printf("Global Done initialized\n");
-            for (int i = 0; i < shmem_n_pes(); i++) {
-                int value_global_done = shmem_int_g(GLOBAL_DONE, i);
-                int value_local_done = shmem_int_g(LOCAL_DONE, i);
-                printf("PE: %d, GLOBAL_DONE: %d, LOCAL_DONE: %d\n", i, value_global_done, value_local_done);
-            }
-        }
+        // if(shmem_my_pe()==0){
+        //     for (int i = 0; i < shmem_n_pes(); i++) {
+        //         int value_global_done = shmem_int_g(GLOBAL_DONE, i);
+        //         int value_local_done = shmem_int_g(LOCAL_DONE, i);
+        //         printf("PE: %d, GLOBAL_DONE: %d, LOCAL_DONE: %d\n", i, value_global_done, value_local_done);
+        //     }
+        //     printf("Global Done initialized\n");
+        // }
     }
 
 #ifdef ENABLE_TRACE
@@ -880,10 +880,10 @@ class Selector {
 #endif // USE_LAMBDA
 
     void initiate_global_done() { // signals current PE termination
-        // need extra layer with LOCAL_DONE because some apps require mailboxes to send messages
-        //  within the "request" that they are serving, so this keeps the mailbox active to do that
+        // need extra layer with LOCAL_DONE because some apps require mbs to send messages
+        //  within the "request" that they are serving, so this keeps the mb active to do that
 
-        shmem_int_p(LOCAL_DONE, 1, shmem_my_pe()); 
+        *LOCAL_DONE = 1; 
 
         int global_done_flag = 0;
         int local_done_value;
@@ -891,6 +891,7 @@ class Selector {
         // fetch LOCAL_DONE on all PEs
         for (int pe_id = 0; pe_id < shmem_n_pes(); pe_id++) {
             local_done_value = shmem_int_g(LOCAL_DONE, pe_id);
+            if ( !local_done_value ) { break; }
             global_done_flag += local_done_value;
         }
 
