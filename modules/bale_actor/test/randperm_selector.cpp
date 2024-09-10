@@ -98,8 +98,9 @@ public:
         int64_t* ltarget,
         int64_t* lperm,
         int64_t* iend,
-        int64_t* hits
-    ) : ltarget_(ltarget), lperm_(lperm), iend_(iend), hits_(hits) {
+        int64_t* hits,
+        int64_t lN
+    ) : ltarget_(ltarget), lperm_(lperm), iend_(iend), hits_(hits), lN_(lN) {
         mb[THROW].process = [this](RPpkg pkg, int senderRank) { this->throwProcess(pkg, senderRank); };
         mb[REPLY].process = [this](RPpkg pkg, int senderRank) { this->replyProcess(pkg, senderRank); };
     }
@@ -109,6 +110,7 @@ private:
     int64_t* lperm_;
     int64_t* iend_;
     int64_t* hits_;
+    int64_t lN_;
 
     void throwProcess(RPpkg pkg, int senderRank) {
         if (ltarget_[pkg.idx] == -1L) {
@@ -129,6 +131,8 @@ private:
         } else {
             (*hits_)++;
         }
+        printf("hits is %d, lN_ is %d\n", *hits_, lN_);
+        if (*hits_ >= lN_) { initiate_global_done(); }
     }
 };
 
@@ -175,7 +179,7 @@ int64_t* copied_rand_permp_selector(int64_t N, int seed) {
     int64_t* hitsPtr = &hits;
     int64_t* iendPtr = &iend;
 
-    RandPermSelectorPhaseOne* phaseOneSelector = new RandPermSelectorPhaseOne(ltarget, lperm, iendPtr, hitsPtr);
+    RandPermSelectorPhaseOne* phaseOneSelector = new RandPermSelectorPhaseOne(ltarget, lperm, iendPtr, hitsPtr, lN);
     
     // setup finish, start algorithm
     lgp_barrier();
@@ -210,13 +214,13 @@ int64_t* copied_rand_permp_selector(int64_t N, int seed) {
 
             //*iendPtr = i;
 
-            // let the mailbox process in order for hits to update
-            hclib::yield();
+            // // let the mailbox process in order for hits to update
+            // hclib::yield();
 
-            // If enough hits are processed, break and teardown
-            if (*hitsPtr >= lN) { break; }
+            // // If enough hits are processed, break and teardown
+            // if (*hitsPtr >= lN) { break; }
         }
-        phaseOneSelector->done(THROW);
+        // phaseOneSelector->done(THROW);
     });
 
     lgp_barrier();
@@ -341,4 +345,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-
