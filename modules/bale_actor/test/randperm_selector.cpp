@@ -41,6 +41,7 @@ extern "C" {
 #include <spmat.h>
 }
 #include "selector.h"
+#include <tuple>
 
 #define THREADS shmem_n_pes()
 #define MYTHREAD shmem_my_pe()
@@ -92,6 +93,14 @@ typedef struct pkg_t {
 enum PhaseOneMailBoxType {THROW, REPLY};
 enum PhaseTwoMailBoxType {MSG};
 
+/*
+    Throw a dart
+*/
+std::tuple<pkg_t, int64_t> throw_dart(int64_t* lperm, int64_t* iendPtr, int64_t M) {
+    int64_t r = lrand48() % M;
+    return {{r / THREADS, lperm[*iendPtr]}, r % THREADS};
+}
+
 class RandPermSelectorPhaseOne: public hclib::Selector<2, RPpkg> {
 public:
     RandPermSelectorPhaseOne(
@@ -99,8 +108,9 @@ public:
         int64_t* lperm,
         int64_t* iend,
         int64_t* hits,
-        int64_t lN
-    ) : ltarget_(ltarget), lperm_(lperm), iend_(iend), hits_(hits), lN_(lN) {
+        int64_t lN,
+        int64_t M
+    ) : ltarget_(ltarget), lperm_(lperm), iend_(iend), hits_(hits), lN_(lN), M_(M) {
         mb[THROW].process = [this](RPpkg pkg, int senderRank) { this->throwProcess(pkg, senderRank); };
         mb[REPLY].process = [this](RPpkg pkg, int senderRank) { this->replyProcess(pkg, senderRank); };
     }
@@ -111,6 +121,7 @@ private:
     int64_t* iend_;
     int64_t* hits_;
     int64_t lN_;
+    int64_t M_;
 
     void throwProcess(RPpkg pkg, int senderRank) {
         if (ltarget_[pkg.idx] == -1L) {
@@ -127,11 +138,15 @@ private:
 
     void replyProcess(RPpkg pkg, int senderRank) {
         if (pkg.idx < 0L) {
+            // dart does not hit: update and throw another dart
             lperm_[--(*iend_)] = -(pkg.idx) - 1;
+            auto [pkg, pe] = throw_dart(lperm_, iend_, M_);
+            send(THROW, pkg, pe);
         } else {
             (*hits_)++;
         }
-        printf("hits is %d, lN_ is %d\n", *hits_, lN_);
+        
+        // globally terminate once we've reached the required hits
         if (*hits_ >= lN_) { initiate_global_done(); }
     }
 };
@@ -149,7 +164,6 @@ private:
         lperm_[pos_++] = val;
     }
 };
-
 
 int64_t* copied_rand_permp_selector(int64_t N, int seed) {
     int64_t lN = (N + THREADS - MYTHREAD - 1) / THREADS;
@@ -179,48 +193,23 @@ int64_t* copied_rand_permp_selector(int64_t N, int seed) {
     int64_t* hitsPtr = &hits;
     int64_t* iendPtr = &iend;
 
-    RandPermSelectorPhaseOne* phaseOneSelector = new RandPermSelectorPhaseOne(ltarget, lperm, iendPtr, hitsPtr, lN);
+    RandPermSelectorPhaseOne* phaseOneSelector = new RandPermSelectorPhaseOne(ltarget, lperm, iendPtr, hitsPtr, lN, M);
     
     // setup finish, start algorithm
     lgp_barrier();
     double t1 = wall_seconds();
 
     hclib::finish([lN, M, lperm, hitsPtr, iendPtr, phaseOneSelector]() {
-        phaseOneSelector->mb[THROW].set_is_early_exit(true);
+        // phaseOneSelector->mb[THROW].set_is_early_exit(true);
         phaseOneSelector->start();
-        pkg_t pkg;
-        //int64_t i = 0;
 
-        // Since a throw a fail, we need to keep track of hits
-        // instead of believing our lN request will all result in hits
-        while (*hitsPtr != lN) {
-            //i = *iendPtr;
-
-            while (*iendPtr < lN) {
-                int64_t r = lrand48() % M;
-                int64_t pe = r % THREADS;
-                pkg.idx = r / THREADS;
-                pkg.val = lperm[*iendPtr];
-
-                bool ret = phaseOneSelector->send(THROW, pkg, pe);
-                //i++;
-
-                if(ret)
-                    (*iendPtr)++;
-                else
-                    hclib::yield();
-
-            }
-
-            //*iendPtr = i;
-
-            // // let the mailbox process in order for hits to update
-            // hclib::yield();
-
-            // // If enough hits are processed, break and teardown
-            // if (*hitsPtr >= lN) { break; }
-        }
-        // phaseOneSelector->done(THROW);
+        // throw initial set of darts,
+        //   then continue THROW - REPLY process through message handlers
+        while (*iendPtr < lN) {
+            auto [pkg, pe] = throw_dart(lperm, iendPtr, M); 
+            phaseOneSelector->send(THROW, pkg, pe);
+            (*iendPtr)++;
+        } 
     });
 
     lgp_barrier();
