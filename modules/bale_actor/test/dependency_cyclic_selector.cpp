@@ -3,7 +3,7 @@
 // 
  *****************************************************************/ 
 /*! \file dependancy_cylic_selector.cpp
- * \brief Demo application for graph termination dependancies (with cycles). 
+ * \brief Demo application for graph termination dependancies (with complex cyclic/acyclic dependencies and cycles). 
  *
  */
 
@@ -29,31 +29,26 @@ public:
         mb[A].process = [this] (DepPkt pkt, int sender_rank) { 
             this->a_process(pkt, sender_rank);
         }; 
-        //mb[A].add_dep_mbs({}, {B,D}); // predecessors = {}, successors = {B,D}
         mb[A].add_dep_mbs({B,D}); // successors = {B,D}
 
         mb[B].process = [this] (DepPkt pkt, int sender_rank) { 
             this->b_process(pkt, sender_rank);
         };
-        //mb[B].add_dep_mbs({A}, {}); // predecessors = {A}, successors = {}
         mb[B].add_dep_mbs({}); // successors = {}
         
         mb[C].process = [this] (DepPkt pkt, int sender_rank) { 
             this->c_process(pkt, sender_rank);
         };
-        //mb[C].add_dep_mbs({}, {D,E}); // predecessors = {}, successors = {D,E}
         mb[C].add_dep_mbs({D,E}); // successors = {D,E}
 
         mb[D].process = [this] (DepPkt pkt, int sender_rank) { 
             this->d_process(pkt, sender_rank);
         };
-        //mb[D].add_dep_mbs({A,C}, {}); // predecessors = {A,C}, successors = {}
         mb[D].add_dep_mbs({}); // successors = {}
 
         mb[E].process = [this] (DepPkt pkt, int sender_rank) { 
             this->e_process(pkt, sender_rank);
         };
-        //mb[E].add_dep_mbs({C}, {}); // predecessors = {C}, successors = {}
         mb[E].add_dep_mbs({}); // successors = {}
     }
 
@@ -142,7 +137,6 @@ int main(int argc, char* argv[]) {
             depSelector->send(C, pkg, MYTHREAD);
 
             // invoke done on mailbox A and C
-            //depSelector->done_extended(A);
             depSelector->done_extended(C);
         });
 
