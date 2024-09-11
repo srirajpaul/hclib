@@ -2,7 +2,7 @@
 //
 // 
  *****************************************************************/ 
-/*! \file dependancy_*_selector.cpp
+/*! \file factorial_selector.cpp
  * \brief Demo application for graph termination dependancies. 
  *          Calculate the factorial of a randomly generated number from 1 to 10
  *
@@ -34,7 +34,7 @@ public:
         mb[A].process = [this] (DepPkt pkt, int sender_rank) { 
             this->a_process(pkt, sender_rank);
         };
-        //mb[A].add_dep_mbs({A}); // successors = {A}
+        mb[A].add_dep_mbs({A}); // successors = {A}
     }
 
 private:
@@ -44,7 +44,7 @@ private:
     void a_process(DepPkt pkg, int sender_rank) {
         if ((pkg.n == 0) || (pkg.n == 1)) {
             *factorial_ *= 1;
-            done(A); //done_extended(A);
+            done_extended(A);
         } else {*factorial_ *= pkg.n;}
         DepPkt next_pkg;
         next_pkg.n = pkg.n - 1;
