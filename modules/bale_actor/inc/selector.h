@@ -2,8 +2,8 @@
 #ifndef SELECTOR_H
 #define SELECTOR_H
 
-#include<iostream>
-#include<vector>
+#include <iostream>
+#include <vector>
 #include "safe_buffer.h"
 #include "hclib_bale_actor.h"
 extern "C" {
@@ -22,6 +22,11 @@ extern "C" {
 #endif
 
 namespace hclib {
+
+#include "shmem.h"
+int *GLOBAL_DONE;
+int *LOCAL_DONE;
+
 #ifdef ENABLE_TCOMM_PROFILING
 #ifdef ENABLE_TRACE
 #error ENABLE_TRACE cannot be used with ENABLE_TCOMM_PROFILING so far
@@ -44,12 +49,6 @@ static inline uint64_t stop_tsc() {
 //PEtoNodeMap will be used for tracing purpose when ENABLE_TRACE is defined
 #ifdef ENABLE_TRACE
 #include<papi.h>
-
-#ifndef USE_SHMEM
-#error "Trace generation can be used only when USE_SHMEM=1"
-#else
-#include "shmem.h"
-#endif
 
 FILE *get_trace_fptr(bool is_new, const char name[] = "") {
     static FILE *fptr = NULL;
@@ -323,6 +322,10 @@ class Mailbox {
     bool is_early_exit = false, is_done = false;
     Mailbox* dep_mb = nullptr;
     int mb_id;
+    std::vector<int> dep_mbs;
+    int predecessor_mbs_count = 0;
+    bool is_cyclic = false;
+    bool done_called = false;
 #ifdef ENABLE_TRACE
     PapiTracer *papi_tracer = NULL;
 #endif
@@ -370,6 +373,44 @@ class Mailbox {
         return dep_mb;
     }
 
+    void set_is_cyclic(bool val) {
+        is_cyclic = val;
+    }
+
+    bool get_is_cyclic() {
+        return is_cyclic;
+    }
+
+    void set_done_called(bool val) {
+        done_called = val;
+    }
+
+    bool get_done_called() {
+        return done_called;
+    }
+
+    void add_dep_mbs(std::vector<int> successor_mbs) {
+        for (int64_t const& successor_mb_id : successor_mbs) {
+            dep_mbs.push_back(successor_mb_id);
+        }
+    }
+
+    std::vector<int> get_dep_mbs() {
+        return dep_mbs;
+    }
+
+    int64_t get_predecessor_mbs_count() {
+        return predecessor_mbs_count;
+    }
+
+    void inc_predecessor_mbs_count() {
+        predecessor_mbs_count++;
+    }
+
+    void dec_predecessor_mbs_count() {
+        predecessor_mbs_count--;
+    }
+
 #ifdef ENABLE_TRACE
     void start(int mid, PapiTracer *ptrc) {
       papi_tracer = ptrc;
@@ -413,7 +454,7 @@ class Mailbox {
         return true;
     }
 #else
-    bool send(T pkt, int rank) {
+    bool send(T pkt, int rank, int ORIGIN_FLAG = 0) {
 
 #ifdef ENABLE_TRACE
         trace_send(shmem_my_pe(), rank, sizeof(T));
@@ -421,10 +462,40 @@ class Mailbox {
 
 #ifdef USE_BUFFER
         if(buff->full()) {
-            if(is_early_exit)
+            if(is_early_exit) {
                 return false;
-            else
-                while(buff->full()) hclib::yield_at(nic);
+            } else {
+                while(buff->full()) {
+                    if (!ORIGIN_FLAG) { //ORIGIN_MAIN
+                        hclib::yield_at(nic);
+                    } else {            //ORIGIN_MSGHANDLER -> flush buffer without context switching
+                        BufferPacket<T> bp;
+                        T pop;
+                        int64_t from;
+                        int i;
+                        size_t buff_size = buff->size();
+                        for (i = 0; i < buff_size; i++) {
+                            bp = buff->operator[](i);
+                            if( bp.rank == DONE_MARK || *GLOBAL_DONE == -1 ) { break; }
+                            if(!convey_push(conv, &(bp.data), bp.rank)) break;
+                        }
+
+                        if(i>0)
+                        {
+#ifdef USE_LOCK
+                            std::lock_guard<std::mutex> lg(buff->get_mutex());
+#endif
+                            buff->erase_begin(i);
+                        }
+
+                        while(convey_pull(conv, &pop, &from) == convey_OK && i > 0) {
+                            hclib::async([=]() { process(pop, from); });
+                            //process(pop, from);
+                            i--;
+                        }
+                    }
+                }
+            }
         }
         assert(!buff->full());
         buff->push_back(BufferPacket<T>(pkt, rank));
@@ -461,12 +532,12 @@ class Mailbox {
 
           //Assumes once 'advance' is called with done=true, the conveyor
           //enters endgame and subsequent value of 'done' is ignored
-          while(convey_advance(conv, bp.rank == DONE_MARK)) {
+          while(convey_advance(conv, bp.rank == DONE_MARK || *GLOBAL_DONE == -1)) {
               int i;
               size_t buff_size = buff->size();
               for(i=0;i<buff_size; i++){
                   bp = buff->operator[](i);
-                  if( bp.rank == DONE_MARK) break;
+                  if( bp.rank == DONE_MARK || *GLOBAL_DONE == -1 ) break;
 #ifdef USE_LAMBDA
                   //printf("size %d\n", bp.lambda_pkt->get_bytes());
                   if( !convey_epush(conv, bp.lambda_pkt->get_bytes(), bp.lambda_pkt, bp.rank)) break;
@@ -544,12 +615,12 @@ class Mailbox {
 
           //Assumes once 'advance' is called with done=true, the conveyor
           //enters endgame and subsequent value of 'done' is ignored
-          while(convey_advance(conv, bp.rank == DONE_MARK)) {
+          while(convey_advance(conv, bp.rank == DONE_MARK || *GLOBAL_DONE == -1)) {
               int i;
               size_t buff_size = buff->size();
               for(i=0;i<buff_size; i++){
                   bp = buff->operator[](i);
-                  if( bp.rank == DONE_MARK) break;
+                  if( bp.rank == DONE_MARK || *GLOBAL_DONE == -1 ) break;
 #ifdef USE_LAMBDA
                   //printf("size %d\n", bp.lambda_pkt->get_bytes());
                   if( !convey_epush(conv, bp.lambda_pkt->get_bytes(), bp.lambda_pkt, bp.rank)) break;
@@ -603,6 +674,23 @@ template<int N, typename T=int64_t, int SIZE=BUFFER_SIZE>
 class Selector {
 
   private:
+    void initialize_local_global_done() {
+        GLOBAL_DONE = (int*)shmem_malloc(sizeof(int));
+        LOCAL_DONE = (int*)shmem_malloc(sizeof(int));
+
+        if(GLOBAL_DONE==NULL){
+            std::cout << "ERROR: Unable to allocate space for GLOBAL_DONE pointer\n" << std::endl;
+            abort();
+        }
+        if(LOCAL_DONE==NULL){
+            std::cout << "ERROR: Unable to allocate space for LOCAL_DONE pointer\n" << std::endl;
+            abort();
+        }
+
+        *GLOBAL_DONE = 0;
+        *LOCAL_DONE = 0;
+    }
+
 #ifdef ENABLE_TRACE
     void createPEtoNodeMap() {
         PEtoNodeMap = (int*)shmem_malloc(shmem_n_pes()*sizeof(int));
@@ -683,6 +771,7 @@ class Selector {
         #ifdef ENABLE_TRACE
         createPEtoNodeMap();
         #endif
+        initialize_local_global_done();
         if(is_start) {
             start();
         }
@@ -712,9 +801,29 @@ class Selector {
 #endif
         }
         start_worker_loop();
+
+        // check if mailbox has cyclic dependency
+        for(int mb_id = 0; mb_id < N; mb_id++) {
+            check_cyclic(mb_id);
+        }
+
 #ifdef ENABLE_TRACE
         papi_tracer.start();
 #endif
+    }
+
+    void check_cyclic(int mb_id) {
+        std::vector<int> successors_mb = mb[mb_id].get_dep_mbs();
+
+        for (int const& successor_mb_id : successors_mb) {
+            mb[successor_mb_id].inc_predecessor_mbs_count();
+
+            if (successor_mb_id == mb_id) {
+                mb[mb_id].set_is_cyclic(true);
+            } else {
+                check_cyclic(successor_mb_id);  // recursively check successors
+            }
+        }
     }
 
 #ifdef USE_LAMBDA
@@ -749,7 +858,9 @@ class Selector {
         return send(0, rank, lambda);
     }
 #else
-    bool send(int mb_id, T pkt, int rank) {
+    bool send(int mb_id, T pkt, int rank, int ORIGIN_FLAG = 0) {
+                                            // ORIGIN_FLAG = 0 -> ORIGIN_MAIN , ORIGIN_FLAG = 1 -> ORIGIN_MSGHANDLER
+        //printf("ORIGIN_FLAG = %d\n", ORIGIN_FLAG);
 #ifdef ENABLE_TRACE
         int idx = papi_tracer.pause();
         bool ret = mb[mb_id].send(pkt, rank);
@@ -769,7 +880,7 @@ class Selector {
         }
         return ret;
 #else
-        return mb[mb_id].send(pkt, rank);
+        return mb[mb_id].send(pkt, rank, ORIGIN_FLAG);
 #endif
     }
 
@@ -778,6 +889,42 @@ class Selector {
         return send(0, pkt, rank);
     }
 #endif // USE_LAMBDA
+
+    void initiate_global_done() { // signals current PE termination
+        // need extra layer with LOCAL_DONE because some apps require mbs to send messages
+        //  within the "request" that they are serving, so this keeps the mb active to do that
+
+        *LOCAL_DONE = -1; 
+
+        int global_done_flag = 0;
+        int local_done_value;
+
+        // fetch LOCAL_DONE on all PEs
+        for (int pe_id = 0; pe_id < shmem_n_pes(); pe_id++) {
+            if (pe_id == shmem_my_pe()) {
+                local_done_value = *LOCAL_DONE;
+            } else {
+                local_done_value = shmem_int_g(LOCAL_DONE, pe_id);
+            }
+            if (!local_done_value) { break; }
+            global_done_flag += local_done_value;
+        }
+
+        // if all LOCAL_DONE == (-1)*shmem_n_pes then can (safely) invoke global termination
+        if (global_done_flag == (-1 * shmem_n_pes())) {
+            global_done();
+        }
+    }
+
+    void global_done() { // invokes global termination on all PEs
+        for (int pe_id = 0; pe_id < shmem_n_pes(); pe_id++) {
+            if (pe_id == shmem_my_pe()) {
+                *GLOBAL_DONE = -1;
+            } else {
+                shmem_int_p(GLOBAL_DONE, -1, pe_id);
+            }
+        }
+    }
 
     void done(int mb_id) {
 #ifdef ENABLE_TRACE
@@ -808,6 +955,35 @@ class Selector {
 #endif
             }
         }, mb[mb_id].get_worker_loop_finish(), nic);
+    }
+
+    void done_extended(int mb_id) {
+        bool mb_cyclic = mb[mb_id].get_is_cyclic();
+        bool mb_done_called;
+        if (mb_cyclic) mb_done_called = mb[mb_id].get_done_called();
+
+        // only call done on acyclic mb or cyclic mb that has not already received done(mb)
+        if ((!mb_cyclic) || (mb_cyclic && !mb_done_called)) {
+            mb[mb_id].done();
+            if (mb_cyclic) mb[mb_id].set_done_called(true);
+            hclib::async_await_at([=]() {
+                num_work_loop_end++;
+
+                std::vector<int> successor_mbs = mb[mb_id].get_dep_mbs();
+                for (int const& successor_mb_id : successor_mbs) {
+                    int num_predecessors = mb[successor_mb_id].get_predecessor_mbs_count();
+                    if (num_predecessors == 1) {
+                        done_extended(successor_mb_id);
+                    } else {
+                        mb[successor_mb_id].dec_predecessor_mbs_count();
+                    }
+                }
+                
+                if (num_work_loop_end == N) {
+                    end_prom.put(1);
+                }
+            }, mb[mb_id].get_worker_loop_finish(), nic);
+        }
     }
 
     void done() {
