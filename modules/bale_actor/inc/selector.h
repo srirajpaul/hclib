@@ -23,7 +23,12 @@ extern "C" {
 
 namespace hclib {
 
+#ifndef USE_SHMEM
+#error "Extended complex termination protocols (done_extended and global_done) can be used only when USE_SHMEM=1"
+#else
 #include "shmem.h"
+#endif
+
 int *GLOBAL_DONE;
 int *LOCAL_DONE;
 
