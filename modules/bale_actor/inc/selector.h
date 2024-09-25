@@ -1,4 +1,3 @@
-
 #ifndef SELECTOR_H
 #define SELECTOR_H
 
@@ -28,9 +27,6 @@ namespace hclib {
 #else
 #include "shmem.h"
 #endif
-
-int *GLOBAL_DONE;
-int *LOCAL_DONE;
 
 #ifdef ENABLE_TCOMM_PROFILING
 #ifdef ENABLE_TRACE
@@ -331,6 +327,8 @@ class Mailbox {
     int predecessor_mbs_count = 0;
     bool is_cyclic = false;
     bool done_called = false;
+    int *GLOBAL_DONE;
+    int *LOCAL_DONE;
 #ifdef ENABLE_TRACE
     PapiTracer *papi_tracer = NULL;
 #endif
@@ -424,9 +422,11 @@ class Mailbox {
       t_process = _t_process;
       recv_count = _recv_count;
 #else
-    void start(int mid) {
+    void start(int mid, int* global_done, int* local_done) {
 #endif
         mb_id = mid;
+        GLOBAL_DONE = global_done;
+        LOCAL_DONE = local_done;
 #ifdef USE_LAMBDA
         conv = convey_new_elastic(ELASTIC_BUFFER_SIZE, SIZE_MAX, 0, NULL, convey_opt_PROGRESS);
 #else
@@ -742,6 +742,9 @@ class Selector {
 
     Mailbox<T, SIZE> mb[N];
 
+    int *GLOBAL_DONE;
+    int *LOCAL_DONE;
+
     Selector(bool is_start = false) {
         #ifdef ENABLE_TRACE
         createPEtoNodeMap();
@@ -772,7 +775,7 @@ class Selector {
 #elif defined(ENABLE_TCOMM_PROFILING)
             mb[i].start(i, &t_process, &recv_count);
 #else
-            mb[i].start(i);
+            mb[i].start(i, GLOBAL_DONE, LOCAL_DONE);
 #endif
         }
         start_worker_loop();
