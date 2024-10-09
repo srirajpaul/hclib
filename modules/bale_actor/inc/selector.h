@@ -415,10 +415,10 @@ class Mailbox {
     }
 
 #ifdef ENABLE_TRACE
-    void start(int mid, PapiTracer *ptrc) {
+    void start(int mid, int* global_done, int* local_done, PapiTracer *ptrc) {
       papi_tracer = ptrc;
 #elif defined (ENABLE_TCOMM_PROFILING)
-    void start(int mid, uint64_t *_t_process, uint64_t *_recv_count) {
+    void start(int mid, int* global_done, int* local_done, uint64_t *_t_process, uint64_t *_recv_count) {
       t_process = _t_process;
       recv_count = _recv_count;
 #else
@@ -771,9 +771,9 @@ class Selector {
         for(int i=0; i<N; i++) {
             //mb[i].set_dep_mb(&mb[(i+1)%N]);
 #ifdef ENABLE_TRACE
-            mb[i].start(i, &papi_tracer);
+            mb[i].start(i, GLOBAL_DONE, LOCAL_DONE, &papi_tracer);
 #elif defined(ENABLE_TCOMM_PROFILING)
-            mb[i].start(i, &t_process, &recv_count);
+            mb[i].start(i, GLOBAL_DONE, LOCAL_DONE, &t_process, &recv_count);
 #else
             mb[i].start(i, GLOBAL_DONE, LOCAL_DONE);
 #endif
