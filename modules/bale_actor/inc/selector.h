@@ -13,7 +13,12 @@ extern "C" {
 #define USE_BUFFER
 #endif
 
-// #define ENABLE_TRACE
+// #define ENABLE_TRACE       /* Insert this line before including selector.h in user program */
+// #define ENABLE_TRACE_PAPI  /* Additionally insert this line to enable PAPI-based tracing  */
+#if defined(ENABLE_TRACE_PAPI) && !defined(ENABLE_TRACE)
+#define ENABLE_TRACE
+#endif
+
 #define DONE_MARK -1
 #define BUFFER_SIZE 1024
 #ifndef ELASTIC_BUFFER_SIZE
@@ -49,7 +54,9 @@ static inline uint64_t stop_tsc() {
 #endif
 //PEtoNodeMap will be used for tracing purpose when ENABLE_TRACE is defined
 #ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
 #include<papi.h>
+#endif
 
 FILE *get_trace_fptr(bool is_new, const char name[] = "") {
     static FILE *fptr = NULL;
@@ -64,6 +71,7 @@ FILE *get_trace_fptr(bool is_new, const char name[] = "") {
     return fptr;
 }
 
+#ifdef ENABLE_TRACE_PAPI
 FILE *get_papi_trace_fptr(bool is_new, const char name[] = "") {
     static FILE *fptr = NULL;
     if (fptr == NULL || is_new) {
@@ -76,6 +84,7 @@ FILE *get_papi_trace_fptr(bool is_new, const char name[] = "") {
     }
     return fptr;
 }
+#endif
 
 /*
   Library function to create a new file for trace output, e.g.:
@@ -86,7 +95,9 @@ FILE *get_papi_trace_fptr(bool is_new, const char name[] = "") {
  */
 void new_file_for_selector_trace(char name[]) {
   FILE *fptr1 = get_trace_fptr(true, name);
+#ifdef ENABLE_TRACE_PAPI
   FILE *fptr2 = get_papi_trace_fptr(true, name);
+#endif
 }
 
 double get_clock_time() {
@@ -104,6 +115,7 @@ void trace_send(int64_t src, int64_t dst, size_t pkg_size) {
     fflush(fptr);
 }
 
+#ifdef ENABLE_TRACE_PAPI
 /*
   Future work: Allows user to specify the PAPI events to be measured.
  */
@@ -263,7 +275,8 @@ class PapiTracer {
     curr = NULL;
   }
 };
-#endif
+#endif // ENABLE_TRACE_PAPI
+#endif // ENABLE_TRACE
 
 #ifdef USE_LAMBDA
 class BaseLambdaPacket {
@@ -329,7 +342,7 @@ class Mailbox {
     bool done_called = false;
     int *GLOBAL_DONE;
     int *LOCAL_DONE;
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
     PapiTracer *papi_tracer = NULL;
 #endif
 #ifdef ENABLE_TCOMM_PROFILING
@@ -414,7 +427,7 @@ class Mailbox {
         predecessor_mbs_count--;
     }
 
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
     void start(int mid, int* global_done, int* local_done, PapiTracer *ptrc) {
       papi_tracer = ptrc;
 #elif defined (ENABLE_TCOMM_PROFILING)
@@ -545,7 +558,7 @@ class Mailbox {
               //while(!get_dep_mb()->get_buffer()->full() &&  convey_pull(conv, &pop, &from) == convey_OK) {
               while( convey_pull(conv, &pop, &from) == convey_OK) {
                   //hclib::async([=]() { process(pop, from); });
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
                   papi_tracer->start();
 #endif
 #ifdef ENABLE_TCOMM_PROFILING
@@ -556,7 +569,7 @@ class Mailbox {
                   *t_process = *t_process + (stop_tsc() - t1);
                   *recv_count = *recv_count + 1;
 #endif
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
                   papi_tracer->end_and_dump(from, sizeof(T), mb_id);
 #endif
               }
@@ -625,11 +638,11 @@ class Mailbox {
               //while(!get_dep_mb()->get_buffer()->full() &&  convey_pull(conv, &pop, &from) == convey_OK) {
               while( convey_pull(conv, &pop, &from) == convey_OK) {
                   //hclib::async([=]() { process(pop, from); });
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
                   papi_tracer->start();
 #endif
                   process(pop, from);
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
                   papi_tracer->end_and_dump(from, sizeof(T), mb_id);
 #endif
               }
@@ -691,7 +704,9 @@ class Selector {
         }
     }
 
+#ifdef ENABLE_TRACE_PAPI
   PapiTracer papi_tracer;
+#endif
 #endif
 #ifdef ENABLE_TCOMM_PROFILING
     uint64_t t_start = 0;              // the time at which the start API is called
@@ -762,7 +777,7 @@ class Selector {
     }
 
     void start() {
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
         papi_tracer.init();
 #endif
 #ifdef ENABLE_TCOMM_PROFILING
@@ -770,7 +785,7 @@ class Selector {
 #endif
         for(int i=0; i<N; i++) {
             //mb[i].set_dep_mb(&mb[(i+1)%N]);
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
             mb[i].start(i, GLOBAL_DONE, LOCAL_DONE, &papi_tracer);
 #elif defined(ENABLE_TCOMM_PROFILING)
             mb[i].start(i, GLOBAL_DONE, LOCAL_DONE, &t_process, &recv_count);
@@ -785,7 +800,7 @@ class Selector {
             check_cyclic(mb_id);
         }
 
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
         papi_tracer.start();
 #endif
     }
@@ -807,7 +822,7 @@ class Selector {
 #ifdef USE_LAMBDA
     template<typename L>
     bool send(int mb_id, int rank, L lambda) {
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
         int idx = papi_tracer.pause();
         bool ret = mb[mb_id].send(rank, lambda);
         papi_tracer.resume(idx);
@@ -837,7 +852,7 @@ class Selector {
     }
 #else
     bool send(int mb_id, T pkt, int rank) {
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
         int idx = papi_tracer.pause();
         bool ret = mb[mb_id].send(pkt, rank);
         papi_tracer.resume(idx);
@@ -903,7 +918,7 @@ class Selector {
     }
 
     void done(int mb_id) {
-#ifdef ENABLE_TRACE
+#ifdef ENABLE_TRACE_PAPI
         if (mb_id == 0)
             papi_tracer.end_and_dump(shmem_my_pe(), 0, -1);
 #endif
